@@ -17,7 +17,7 @@ int main()
         printf("mobile_robot_acados_create() returned status %d. Exiting.\n", status);
         exit(1);
     }
-    sim_solver_capsule *sim_capsule = mobile_robot_acados_sim_solver_create_capsule();
+    mobile_robot_sim_solver_capsule *sim_capsule = mobile_robot_acados_sim_solver_create_capsule();
     status = mobile_robot_acados_sim_create(sim_capsule);
     sim_config *mobile_robot_sim_config = mobile_robot_acados_get_sim_config(sim_capsule);
     void *mobile_robot_sim_dims = mobile_robot_acados_get_sim_dims(sim_capsule);
