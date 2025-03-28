@@ -47,8 +47,8 @@ class MobileRobotModel(object):
         # constraint
         constraint.v_max = 0.6
         constraint.v_min = -0.6
-        constraint.omega_max = np.pi/4.0
-        constraint.omega_min = -np.pi/4.0
+        constraint.omega_max = np.pi/40.0
+        constraint.omega_min = -np.pi/40.0
         constraint.x_min = -2.
         constraint.x_max = 2.
         constraint.y_min = -2.

@@ -38,86 +38,86 @@
 #include "acados_c/external_function_interface.h"
 
 // example specific
-#include "mobile_robot_model/mobile_robot_model.h"
+#include "spline_ocp_model/spline_ocp_model.h"
 
 
 
 
 
-#include "acados_solver_mobile_robot.h"
+#include "acados_solver_spline_ocp.h"
 
-#define NX     MOBILE_ROBOT_NX
-#define NZ     MOBILE_ROBOT_NZ
-#define NU     MOBILE_ROBOT_NU
-#define NP     MOBILE_ROBOT_NP
-#define NP_GLOBAL     MOBILE_ROBOT_NP_GLOBAL
-#define NY0    MOBILE_ROBOT_NY0
-#define NY     MOBILE_ROBOT_NY
-#define NYN    MOBILE_ROBOT_NYN
+#define NX     SPLINE_OCP_NX
+#define NZ     SPLINE_OCP_NZ
+#define NU     SPLINE_OCP_NU
+#define NP     SPLINE_OCP_NP
+#define NP_GLOBAL     SPLINE_OCP_NP_GLOBAL
+#define NY0    SPLINE_OCP_NY0
+#define NY     SPLINE_OCP_NY
+#define NYN    SPLINE_OCP_NYN
 
-#define NBX    MOBILE_ROBOT_NBX
-#define NBX0   MOBILE_ROBOT_NBX0
-#define NBU    MOBILE_ROBOT_NBU
-#define NG     MOBILE_ROBOT_NG
-#define NBXN   MOBILE_ROBOT_NBXN
-#define NGN    MOBILE_ROBOT_NGN
+#define NBX    SPLINE_OCP_NBX
+#define NBX0   SPLINE_OCP_NBX0
+#define NBU    SPLINE_OCP_NBU
+#define NG     SPLINE_OCP_NG
+#define NBXN   SPLINE_OCP_NBXN
+#define NGN    SPLINE_OCP_NGN
 
-#define NH     MOBILE_ROBOT_NH
-#define NHN    MOBILE_ROBOT_NHN
-#define NH0    MOBILE_ROBOT_NH0
-#define NPHI   MOBILE_ROBOT_NPHI
-#define NPHIN  MOBILE_ROBOT_NPHIN
-#define NPHI0  MOBILE_ROBOT_NPHI0
-#define NR     MOBILE_ROBOT_NR
+#define NH     SPLINE_OCP_NH
+#define NHN    SPLINE_OCP_NHN
+#define NH0    SPLINE_OCP_NH0
+#define NPHI   SPLINE_OCP_NPHI
+#define NPHIN  SPLINE_OCP_NPHIN
+#define NPHI0  SPLINE_OCP_NPHI0
+#define NR     SPLINE_OCP_NR
 
-#define NS     MOBILE_ROBOT_NS
-#define NS0    MOBILE_ROBOT_NS0
-#define NSN    MOBILE_ROBOT_NSN
+#define NS     SPLINE_OCP_NS
+#define NS0    SPLINE_OCP_NS0
+#define NSN    SPLINE_OCP_NSN
 
-#define NSBX   MOBILE_ROBOT_NSBX
-#define NSBU   MOBILE_ROBOT_NSBU
-#define NSH0   MOBILE_ROBOT_NSH0
-#define NSH    MOBILE_ROBOT_NSH
-#define NSHN   MOBILE_ROBOT_NSHN
-#define NSG    MOBILE_ROBOT_NSG
-#define NSPHI0 MOBILE_ROBOT_NSPHI0
-#define NSPHI  MOBILE_ROBOT_NSPHI
-#define NSPHIN MOBILE_ROBOT_NSPHIN
-#define NSGN   MOBILE_ROBOT_NSGN
-#define NSBXN  MOBILE_ROBOT_NSBXN
+#define NSBX   SPLINE_OCP_NSBX
+#define NSBU   SPLINE_OCP_NSBU
+#define NSH0   SPLINE_OCP_NSH0
+#define NSH    SPLINE_OCP_NSH
+#define NSHN   SPLINE_OCP_NSHN
+#define NSG    SPLINE_OCP_NSG
+#define NSPHI0 SPLINE_OCP_NSPHI0
+#define NSPHI  SPLINE_OCP_NSPHI
+#define NSPHIN SPLINE_OCP_NSPHIN
+#define NSGN   SPLINE_OCP_NSGN
+#define NSBXN  SPLINE_OCP_NSBXN
 
 
 
 // ** solver data **
 
-mobile_robot_solver_capsule * mobile_robot_acados_create_capsule(void)
+spline_ocp_solver_capsule * spline_ocp_acados_create_capsule(void)
 {
-    void* capsule_mem = malloc(sizeof(mobile_robot_solver_capsule));
-    mobile_robot_solver_capsule *capsule = (mobile_robot_solver_capsule *) capsule_mem;
+    void* capsule_mem = malloc(sizeof(spline_ocp_solver_capsule));
+    spline_ocp_solver_capsule *capsule = (spline_ocp_solver_capsule *) capsule_mem;
 
     return capsule;
 }
 
 
-int mobile_robot_acados_free_capsule(mobile_robot_solver_capsule *capsule)
+int spline_ocp_acados_free_capsule(spline_ocp_solver_capsule *capsule)
 {
     free(capsule);
     return 0;
 }
 
 
-int mobile_robot_acados_create(mobile_robot_solver_capsule* capsule)
+int spline_ocp_acados_create(spline_ocp_solver_capsule* capsule)
 {
-    int N_shooting_intervals = MOBILE_ROBOT_N;
+    int N_shooting_intervals = SPLINE_OCP_N;
     double* new_time_steps = NULL; // NULL -> don't alter the code generated time-steps
-    return mobile_robot_acados_create_with_discretization(capsule, N_shooting_intervals, new_time_steps);
+    return spline_ocp_acados_create_with_discretization(capsule, N_shooting_intervals, new_time_steps);
 }
 
 
-int mobile_robot_acados_update_time_steps(mobile_robot_solver_capsule* capsule, int N, double* new_time_steps)
+int spline_ocp_acados_update_time_steps(spline_ocp_solver_capsule* capsule, int N, double* new_time_steps)
 {
     if (N != capsule->nlp_solver_plan->N) {
-        fprintf(stderr, "mobile_robot_acados_update_time_steps: given number of time steps (= %d) " \
+        fprintf(stderr, "spline_ocp_acados_update_time_steps: given number of time steps (= %d) " \
             "differs from the currently allocated number of " \
             "time steps (= %d)!\n" \
             "Please recreate with new discretization and provide a new vector of time_stamps!\n",
@@ -138,9 +138,9 @@ int mobile_robot_acados_update_time_steps(mobile_robot_solver_capsule* capsule, 
 }
 
 /**
- * Internal function for mobile_robot_acados_create: step 1
+ * Internal function for spline_ocp_acados_create: step 1
  */
-void mobile_robot_acados_create_set_plan(ocp_nlp_plan_t* nlp_solver_plan, const int N)
+void spline_ocp_acados_create_set_plan(ocp_nlp_plan_t* nlp_solver_plan, const int N)
 {
     assert(N == nlp_solver_plan->N);
 
@@ -178,7 +178,7 @@ void mobile_robot_acados_create_set_plan(ocp_nlp_plan_t* nlp_solver_plan, const 
 }
 
 
-static ocp_nlp_dims* mobile_robot_acados_create_setup_dimensions(mobile_robot_solver_capsule* capsule)
+static ocp_nlp_dims* spline_ocp_acados_create_setup_dimensions(spline_ocp_solver_capsule* capsule)
 {
     ocp_nlp_plan_t* nlp_solver_plan = capsule->nlp_solver_plan;
     const int N = nlp_solver_plan->N;
@@ -238,7 +238,7 @@ static ocp_nlp_dims* mobile_robot_acados_create_setup_dimensions(mobile_robot_so
     nbx[0] = NBX0;
     nsbx[0] = 0;
     ns[0] = NS0;
-    nbxe[0] = 3;
+    nbxe[0] = 0;
     ny[0] = NY0;
     nh[0] = NH0;
     nsh[0] = NSH0;
@@ -310,9 +310,9 @@ static ocp_nlp_dims* mobile_robot_acados_create_setup_dimensions(mobile_robot_so
 
 
 /**
- * Internal function for mobile_robot_acados_create: step 3
+ * Internal function for spline_ocp_acados_create: step 3
  */
-void mobile_robot_acados_create_setup_functions(mobile_robot_solver_capsule* capsule)
+void spline_ocp_acados_create_setup_functions(spline_ocp_solver_capsule* capsule)
 {
     const int N = capsule->nlp_solver_plan->N;
 
@@ -342,17 +342,17 @@ void mobile_robot_acados_create_setup_functions(mobile_robot_solver_capsule* cap
     // explicit ode
     capsule->expl_vde_forw = (external_function_external_param_casadi *) malloc(sizeof(external_function_external_param_casadi)*N);
     for (int i = 0; i < N; i++) {
-        MAP_CASADI_FNC(expl_vde_forw[i], mobile_robot_expl_vde_forw);
+        MAP_CASADI_FNC(expl_vde_forw[i], spline_ocp_expl_vde_forw);
     }
 
     capsule->expl_ode_fun = (external_function_external_param_casadi *) malloc(sizeof(external_function_external_param_casadi)*N);
     for (int i = 0; i < N; i++) {
-        MAP_CASADI_FNC(expl_ode_fun[i], mobile_robot_expl_ode_fun);
+        MAP_CASADI_FNC(expl_ode_fun[i], spline_ocp_expl_ode_fun);
     }
 
     capsule->expl_vde_adj = (external_function_external_param_casadi *) malloc(sizeof(external_function_external_param_casadi)*N);
     for (int i = 0; i < N; i++) {
-        MAP_CASADI_FNC(expl_vde_adj[i], mobile_robot_expl_vde_adj);
+        MAP_CASADI_FNC(expl_vde_adj[i], spline_ocp_expl_vde_adj);
     }
 
 
@@ -362,9 +362,9 @@ void mobile_robot_acados_create_setup_functions(mobile_robot_solver_capsule* cap
 
 
 /**
- * Internal function for mobile_robot_acados_create: step 4
+ * Internal function for spline_ocp_acados_create: step 4
  */
-void mobile_robot_acados_create_set_default_parameters(mobile_robot_solver_capsule* capsule)
+void spline_ocp_acados_create_set_default_parameters(spline_ocp_solver_capsule* capsule)
 {
 
     // no parameters defined
@@ -375,9 +375,9 @@ void mobile_robot_acados_create_set_default_parameters(mobile_robot_solver_capsu
 
 
 /**
- * Internal function for mobile_robot_acados_create: step 5
+ * Internal function for spline_ocp_acados_create: step 5
  */
-void mobile_robot_acados_setup_nlp_in(mobile_robot_solver_capsule* capsule, const int N, double* new_time_steps)
+void spline_ocp_acados_setup_nlp_in(spline_ocp_solver_capsule* capsule, const int N, double* new_time_steps)
 {
     assert(N == capsule->nlp_solver_plan->N);
     ocp_nlp_config* nlp_config = capsule->nlp_config;
@@ -397,69 +397,24 @@ void mobile_robot_acados_setup_nlp_in(mobile_robot_solver_capsule* capsule, cons
     if (new_time_steps)
     {
         // NOTE: this sets scaling and time_steps
-        mobile_robot_acados_update_time_steps(capsule, N, new_time_steps);
+        spline_ocp_acados_update_time_steps(capsule, N, new_time_steps);
     }
     else
     {
         // set time_steps
-    double time_step = 0.1;
+    double time_step = 1;
         for (int i = 0; i < N; i++)
         {
             ocp_nlp_in_set(nlp_config, nlp_dims, nlp_in, i, "Ts", &time_step);
         }
         // set cost scaling
         double* cost_scaling = malloc((N+1)*sizeof(double));
-        cost_scaling[0] = 0.1;
-        cost_scaling[1] = 0.1;
-        cost_scaling[2] = 0.1;
-        cost_scaling[3] = 0.1;
-        cost_scaling[4] = 0.1;
-        cost_scaling[5] = 0.1;
-        cost_scaling[6] = 0.1;
-        cost_scaling[7] = 0.1;
-        cost_scaling[8] = 0.1;
-        cost_scaling[9] = 0.1;
-        cost_scaling[10] = 0.1;
-        cost_scaling[11] = 0.1;
-        cost_scaling[12] = 0.1;
-        cost_scaling[13] = 0.1;
-        cost_scaling[14] = 0.1;
-        cost_scaling[15] = 0.1;
-        cost_scaling[16] = 0.1;
-        cost_scaling[17] = 0.1;
-        cost_scaling[18] = 0.1;
-        cost_scaling[19] = 0.1;
-        cost_scaling[20] = 0.1;
-        cost_scaling[21] = 0.1;
-        cost_scaling[22] = 0.1;
-        cost_scaling[23] = 0.1;
-        cost_scaling[24] = 0.1;
-        cost_scaling[25] = 0.1;
-        cost_scaling[26] = 0.1;
-        cost_scaling[27] = 0.1;
-        cost_scaling[28] = 0.1;
-        cost_scaling[29] = 0.1;
-        cost_scaling[30] = 0.1;
-        cost_scaling[31] = 0.1;
-        cost_scaling[32] = 0.1;
-        cost_scaling[33] = 0.1;
-        cost_scaling[34] = 0.1;
-        cost_scaling[35] = 0.1;
-        cost_scaling[36] = 0.1;
-        cost_scaling[37] = 0.1;
-        cost_scaling[38] = 0.1;
-        cost_scaling[39] = 0.1;
-        cost_scaling[40] = 0.1;
-        cost_scaling[41] = 0.1;
-        cost_scaling[42] = 0.1;
-        cost_scaling[43] = 0.1;
-        cost_scaling[44] = 0.1;
-        cost_scaling[45] = 0.1;
-        cost_scaling[46] = 0.1;
-        cost_scaling[47] = 0.1;
-        cost_scaling[48] = 0.1;
-        cost_scaling[49] = 0.1;
-        cost_scaling[50] = 1;
+        cost_scaling[0] = 1;
+        cost_scaling[1] = 1;
+        cost_scaling[2] = 1;
+        cost_scaling[3] = 1;
+        cost_scaling[4] = 1;
+        cost_scaling[5] = 1;
         for (int i = 0; i <= N; i++)
         {
             ocp_nlp_cost_model_set(nlp_config, nlp_dims, nlp_in, i, "scaling", &cost_scaling[i]);
@@ -484,11 +439,14 @@ void mobile_robot_acados_setup_nlp_in(mobile_robot_solver_capsule* capsule, cons
 
    double* W_0 = calloc(NY0*NY0, sizeof(double));
     // change only the non-zero elements:
-    W_0[0+(NY0) * 0] = 1;
-    W_0[1+(NY0) * 1] = 5;
+    W_0[0+(NY0) * 0] = 0.1;
+    W_0[1+(NY0) * 1] = 1;
     W_0[2+(NY0) * 2] = 0.1;
-    W_0[3+(NY0) * 3] = 0.5;
-    W_0[4+(NY0) * 4] = 0.05;
+    W_0[3+(NY0) * 3] = 0.1;
+    W_0[4+(NY0) * 4] = 1;
+    W_0[5+(NY0) * 5] = 0.1;
+    W_0[6+(NY0) * 6] = 0.1;
+    W_0[7+(NY0) * 7] = 0.1;
     ocp_nlp_cost_model_set(nlp_config, nlp_dims, nlp_in, 0, "W", W_0);
     free(W_0);
     double* Vx_0 = calloc(NY0*NX, sizeof(double));
@@ -496,12 +454,14 @@ void mobile_robot_acados_setup_nlp_in(mobile_robot_solver_capsule* capsule, cons
     Vx_0[0+(NY0) * 0] = 1;
     Vx_0[1+(NY0) * 1] = 1;
     Vx_0[2+(NY0) * 2] = 1;
+    Vx_0[3+(NY0) * 3] = 1;
+    Vx_0[4+(NY0) * 4] = 1;
+    Vx_0[5+(NY0) * 5] = 1;
     ocp_nlp_cost_model_set(nlp_config, nlp_dims, nlp_in, 0, "Vx", Vx_0);
     free(Vx_0);
     double* Vu_0 = calloc(NY0*NU, sizeof(double));
     // change only the non-zero elements:
-    Vu_0[3+(NY0) * 0] = 1;
-    Vu_0[4+(NY0) * 1] = 1;
+    Vu_0[7+(NY0) * 0] = 1;
     ocp_nlp_cost_model_set(nlp_config, nlp_dims, nlp_in, 0, "Vu", Vu_0);
     free(Vu_0);
     double* yref = calloc(NY, sizeof(double));
@@ -514,11 +474,14 @@ void mobile_robot_acados_setup_nlp_in(mobile_robot_solver_capsule* capsule, cons
     free(yref);
     double* W = calloc(NY*NY, sizeof(double));
     // change only the non-zero elements:
-    W[0+(NY) * 0] = 1;
-    W[1+(NY) * 1] = 5;
+    W[0+(NY) * 0] = 0.1;
+    W[1+(NY) * 1] = 1;
     W[2+(NY) * 2] = 0.1;
-    W[3+(NY) * 3] = 0.5;
-    W[4+(NY) * 4] = 0.05;
+    W[3+(NY) * 3] = 0.1;
+    W[4+(NY) * 4] = 1;
+    W[5+(NY) * 5] = 0.1;
+    W[6+(NY) * 6] = 0.1;
+    W[7+(NY) * 7] = 0.1;
 
     for (int i = 1; i < N; i++)
     {
@@ -530,6 +493,9 @@ void mobile_robot_acados_setup_nlp_in(mobile_robot_solver_capsule* capsule, cons
     Vx[0+(NY) * 0] = 1;
     Vx[1+(NY) * 1] = 1;
     Vx[2+(NY) * 2] = 1;
+    Vx[3+(NY) * 3] = 1;
+    Vx[4+(NY) * 4] = 1;
+    Vx[5+(NY) * 5] = 1;
     for (int i = 1; i < N; i++)
     {
         ocp_nlp_cost_model_set(nlp_config, nlp_dims, nlp_in, i, "Vx", Vx);
@@ -539,8 +505,7 @@ void mobile_robot_acados_setup_nlp_in(mobile_robot_solver_capsule* capsule, cons
     
     double* Vu = calloc(NY*NU, sizeof(double));
     // change only the non-zero elements:
-    Vu[3+(NY) * 0] = 1;
-    Vu[4+(NY) * 1] = 1;
+    Vu[7+(NY) * 0] = 1;
 
     for (int i = 1; i < N; i++)
     {
@@ -554,9 +519,12 @@ void mobile_robot_acados_setup_nlp_in(mobile_robot_solver_capsule* capsule, cons
 
     double* W_e = calloc(NYN*NYN, sizeof(double));
     // change only the non-zero elements:
-    W_e[0+(NYN) * 0] = 1;
-    W_e[1+(NYN) * 1] = 5;
+    W_e[0+(NYN) * 0] = 0.1;
+    W_e[1+(NYN) * 1] = 1;
     W_e[2+(NYN) * 2] = 0.1;
+    W_e[3+(NYN) * 3] = 0.1;
+    W_e[4+(NYN) * 4] = 1;
+    W_e[5+(NYN) * 5] = 0.1;
     ocp_nlp_cost_model_set(nlp_config, nlp_dims, nlp_in, N, "W", W_e);
     free(W_e);
     double* Vx_e = calloc(NYN*NX, sizeof(double));
@@ -564,6 +532,9 @@ void mobile_robot_acados_setup_nlp_in(mobile_robot_solver_capsule* capsule, cons
     Vx_e[0+(NYN) * 0] = 1;
     Vx_e[1+(NYN) * 1] = 1;
     Vx_e[2+(NYN) * 2] = 1;
+    Vx_e[3+(NYN) * 3] = 1;
+    Vx_e[4+(NYN) * 4] = 1;
+    Vx_e[5+(NYN) * 5] = 1;
     ocp_nlp_cost_model_set(nlp_config, nlp_dims, nlp_in, N, "Vx", Vx_e);
     free(Vx_e);
 
@@ -579,25 +550,27 @@ void mobile_robot_acados_setup_nlp_in(mobile_robot_solver_capsule* capsule, cons
     int* idxbx0 = malloc(NBX0 * sizeof(int));
     idxbx0[0] = 0;
     idxbx0[1] = 1;
-    idxbx0[2] = 2;
+    idxbx0[2] = 3;
+    idxbx0[3] = 4;
 
     double* lubx0 = calloc(2*NBX0, sizeof(double));
     double* lbx0 = lubx0;
     double* ubx0 = lubx0 + NBX0;
     // change only the non-zero elements:
+    lbx0[0] = -10000000000;
+    ubx0[0] = 10000000000;
+    lbx0[1] = -10000000000;
+    ubx0[1] = 10000000000;
+    lbx0[2] = -10000000000;
+    ubx0[2] = 10000000000;
+    lbx0[3] = -10000000000;
+    ubx0[3] = 10000000000;
 
     ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, 0, "idxbx", idxbx0);
     ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, 0, "lbx", lbx0);
     ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, 0, "ubx", ubx0);
     free(idxbx0);
     free(lubx0);
-    // idxbxe_0
-    int* idxbxe_0 = malloc(3 * sizeof(int));
-    idxbxe_0[0] = 0;
-    idxbxe_0[1] = 1;
-    idxbxe_0[2] = 2;
-    ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, 0, "idxbxe", idxbxe_0);
-    free(idxbxe_0);
 
 
 
@@ -607,26 +580,6 @@ void mobile_robot_acados_setup_nlp_in(mobile_robot_solver_capsule* capsule, cons
 
 
     /* constraints that are the same for initial and intermediate */
-    // u
-    int* idxbu = malloc(NBU * sizeof(int));
-    idxbu[0] = 0;
-    idxbu[1] = 1;
-    double* lubu = calloc(2*NBU, sizeof(double));
-    double* lbu = lubu;
-    double* ubu = lubu + NBU;
-    lbu[0] = -0.6;
-    ubu[0] = 0.6;
-    lbu[1] = -0.07853981633974483;
-    ubu[1] = 0.07853981633974483;
-
-    for (int i = 0; i < N; i++)
-    {
-        ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, i, "idxbu", idxbu);
-        ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, i, "lbu", lbu);
-        ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, i, "ubu", ubu);
-    }
-    free(idxbu);
-    free(lubu);
 
 
 
@@ -638,14 +591,14 @@ void mobile_robot_acados_setup_nlp_in(mobile_robot_solver_capsule* capsule, cons
     // x
     int* idxbx = malloc(NBX * sizeof(int));
     idxbx[0] = 0;
-    idxbx[1] = 1;
+    idxbx[1] = 3;
     double* lubx = calloc(2*NBX, sizeof(double));
     double* lbx = lubx;
     double* ubx = lubx + NBX;
-    lbx[0] = -2;
-    ubx[0] = 2;
-    lbx[1] = -2;
-    ubx[1] = 2;
+    lbx[0] = -10000000000;
+    ubx[0] = 10000000000;
+    lbx[1] = -10000000000;
+    ubx[1] = 10000000000;
 
     for (int i = 1; i < N; i++)
     {
@@ -664,6 +617,23 @@ void mobile_robot_acados_setup_nlp_in(mobile_robot_solver_capsule* capsule, cons
 
     /* terminal constraints */
 
+    // set up bounds for last stage
+    // x
+    int* idxbx_e = malloc(NBXN * sizeof(int));
+    idxbx_e[0] = 0;
+    idxbx_e[1] = 3;
+    double* lubx_e = calloc(2*NBXN, sizeof(double));
+    double* lbx_e = lubx_e;
+    double* ubx_e = lubx_e + NBXN;
+    lbx_e[0] = -10000000000;
+    ubx_e[0] = 10000000000;
+    lbx_e[1] = -10000000000;
+    ubx_e[1] = 10000000000;
+    ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, N, "idxbx", idxbx_e);
+    ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, N, "lbx", lbx_e);
+    ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, N, "ubx", ubx_e);
+    free(idxbx_e);
+    free(lubx_e);
 
 
 
@@ -679,7 +649,7 @@ void mobile_robot_acados_setup_nlp_in(mobile_robot_solver_capsule* capsule, cons
 }
 
 
-static void mobile_robot_acados_create_set_opts(mobile_robot_solver_capsule* capsule)
+static void spline_ocp_acados_create_set_opts(spline_ocp_solver_capsule* capsule)
 {
     const int N = capsule->nlp_solver_plan->N;
     ocp_nlp_config* nlp_config = capsule->nlp_config;
@@ -746,7 +716,7 @@ static void mobile_robot_acados_create_set_opts(mobile_robot_solver_capsule* cap
     ocp_nlp_solver_opts_set(nlp_config, nlp_opts, "levenberg_marquardt", &levenberg_marquardt);
 
     /* options QP solver */
-    int qp_solver_cond_N;const int qp_solver_cond_N_ori = 50;
+    int qp_solver_cond_N;const int qp_solver_cond_N_ori = 5;
     qp_solver_cond_N = N < qp_solver_cond_N_ori ? N : qp_solver_cond_N_ori; // use the minimum value here
     ocp_nlp_solver_opts_set(nlp_config, nlp_opts, "qp_cond_N", &qp_solver_cond_N);
 
@@ -797,9 +767,9 @@ static void mobile_robot_acados_create_set_opts(mobile_robot_solver_capsule* cap
 
 
 /**
- * Internal function for mobile_robot_acados_create: step 7
+ * Internal function for spline_ocp_acados_create: step 7
  */
-void mobile_robot_acados_set_nlp_out(mobile_robot_solver_capsule* capsule)
+void spline_ocp_acados_set_nlp_out(spline_ocp_solver_capsule* capsule)
 {
     const int N = capsule->nlp_solver_plan->N;
     ocp_nlp_config* nlp_config = capsule->nlp_config;
@@ -810,8 +780,7 @@ void mobile_robot_acados_set_nlp_out(mobile_robot_solver_capsule* capsule)
     double* xu0 = calloc(NX+NU, sizeof(double));
     double* x0 = xu0;
 
-    // initialize with x0
-
+    // initialize with zeros
 
     double* u0 = xu0 + NX;
 
@@ -828,9 +797,9 @@ void mobile_robot_acados_set_nlp_out(mobile_robot_solver_capsule* capsule)
 
 
 /**
- * Internal function for mobile_robot_acados_create: step 9
+ * Internal function for spline_ocp_acados_create: step 9
  */
-int mobile_robot_acados_create_precompute(mobile_robot_solver_capsule* capsule) {
+int spline_ocp_acados_create_precompute(spline_ocp_solver_capsule* capsule) {
     int status = ocp_nlp_precompute(capsule->nlp_solver, capsule->nlp_in, capsule->nlp_out);
 
     if (status != ACADOS_SUCCESS) {
@@ -842,14 +811,14 @@ int mobile_robot_acados_create_precompute(mobile_robot_solver_capsule* capsule) 
 }
 
 
-int mobile_robot_acados_create_with_discretization(mobile_robot_solver_capsule* capsule, int N, double* new_time_steps)
+int spline_ocp_acados_create_with_discretization(spline_ocp_solver_capsule* capsule, int N, double* new_time_steps)
 {
     // If N does not match the number of shooting intervals used for code generation, new_time_steps must be given.
-    if (N != MOBILE_ROBOT_N && !new_time_steps) {
-        fprintf(stderr, "mobile_robot_acados_create_with_discretization: new_time_steps is NULL " \
+    if (N != SPLINE_OCP_N && !new_time_steps) {
+        fprintf(stderr, "spline_ocp_acados_create_with_discretization: new_time_steps is NULL " \
             "but the number of shooting intervals (= %d) differs from the number of " \
             "shooting intervals (= %d) during code generation! Please provide a new vector of time_stamps!\n", \
-             N, MOBILE_ROBOT_N);
+             N, SPLINE_OCP_N);
         return 1;
     }
 
@@ -858,23 +827,23 @@ int mobile_robot_acados_create_with_discretization(mobile_robot_solver_capsule* 
 
     // 1) create and set nlp_solver_plan; create nlp_config
     capsule->nlp_solver_plan = ocp_nlp_plan_create(N);
-    mobile_robot_acados_create_set_plan(capsule->nlp_solver_plan, N);
+    spline_ocp_acados_create_set_plan(capsule->nlp_solver_plan, N);
     capsule->nlp_config = ocp_nlp_config_create(*capsule->nlp_solver_plan);
 
     // 2) create and set dimensions
-    capsule->nlp_dims = mobile_robot_acados_create_setup_dimensions(capsule);
+    capsule->nlp_dims = spline_ocp_acados_create_setup_dimensions(capsule);
 
     // 3) create and set nlp_opts
     capsule->nlp_opts = ocp_nlp_solver_opts_create(capsule->nlp_config, capsule->nlp_dims);
-    mobile_robot_acados_create_set_opts(capsule);
+    spline_ocp_acados_create_set_opts(capsule);
 
     // 4) create nlp_in
     capsule->nlp_in = ocp_nlp_in_create(capsule->nlp_config, capsule->nlp_dims);
 
     // 5) setup functions, nlp_in and default parameters
-    mobile_robot_acados_create_setup_functions(capsule);
-    mobile_robot_acados_setup_nlp_in(capsule, N, new_time_steps);
-    mobile_robot_acados_create_set_default_parameters(capsule);
+    spline_ocp_acados_create_setup_functions(capsule);
+    spline_ocp_acados_setup_nlp_in(capsule, N, new_time_steps);
+    spline_ocp_acados_create_set_default_parameters(capsule);
 
     // 6) create solver
     capsule->nlp_solver = ocp_nlp_solver_create(capsule->nlp_config, capsule->nlp_dims, capsule->nlp_opts, capsule->nlp_in);
@@ -884,10 +853,10 @@ int mobile_robot_acados_create_with_discretization(mobile_robot_solver_capsule* 
     capsule->nlp_out = ocp_nlp_out_create(capsule->nlp_config, capsule->nlp_dims);
     // 7.2) sens_out
     capsule->sens_out = ocp_nlp_out_create(capsule->nlp_config, capsule->nlp_dims);
-    mobile_robot_acados_set_nlp_out(capsule);
+    spline_ocp_acados_set_nlp_out(capsule);
 
     // 8) do precomputations
-    int status = mobile_robot_acados_create_precompute(capsule);
+    int status = spline_ocp_acados_create_precompute(capsule);
 
     return status;
 }
@@ -895,7 +864,7 @@ int mobile_robot_acados_create_with_discretization(mobile_robot_solver_capsule* 
 /**
  * This function is for updating an already initialized solver with a different number of qp_cond_N. It is useful for code reuse after code export.
  */
-int mobile_robot_acados_update_qp_solver_cond_N(mobile_robot_solver_capsule* capsule, int qp_solver_cond_N)
+int spline_ocp_acados_update_qp_solver_cond_N(spline_ocp_solver_capsule* capsule, int qp_solver_cond_N)
 {
     // 1) destroy solver
     ocp_nlp_solver_destroy(capsule->nlp_solver);
@@ -906,17 +875,17 @@ int mobile_robot_acados_update_qp_solver_cond_N(mobile_robot_solver_capsule* cap
         printf("Warning: qp_solver_cond_N = %d > N = %d\n", qp_solver_cond_N, N);
     ocp_nlp_solver_opts_set(capsule->nlp_config, capsule->nlp_opts, "qp_cond_N", &qp_solver_cond_N);
 
-    // 3) continue with the remaining steps from mobile_robot_acados_create_with_discretization(...):
+    // 3) continue with the remaining steps from spline_ocp_acados_create_with_discretization(...):
     // -> 8) create solver
     capsule->nlp_solver = ocp_nlp_solver_create(capsule->nlp_config, capsule->nlp_dims, capsule->nlp_opts, capsule->nlp_in);
 
     // -> 9) do precomputations
-    int status = mobile_robot_acados_create_precompute(capsule);
+    int status = spline_ocp_acados_create_precompute(capsule);
     return status;
 }
 
 
-int mobile_robot_acados_reset(mobile_robot_solver_capsule* capsule, int reset_qp_solver_mem)
+int spline_ocp_acados_reset(spline_ocp_solver_capsule* capsule, int reset_qp_solver_mem)
 {
 
     // set initialization to all zeros
@@ -959,7 +928,7 @@ int mobile_robot_acados_reset(mobile_robot_solver_capsule* capsule, int reset_qp
 
 
 
-int mobile_robot_acados_update_params(mobile_robot_solver_capsule* capsule, int stage, double *p, int np)
+int spline_ocp_acados_update_params(spline_ocp_solver_capsule* capsule, int stage, double *p, int np)
 {
     int solver_status = 0;
 
@@ -975,7 +944,7 @@ int mobile_robot_acados_update_params(mobile_robot_solver_capsule* capsule, int 
 }
 
 
-int mobile_robot_acados_update_params_sparse(mobile_robot_solver_capsule * capsule, int stage, int *idx, double *p, int n_update)
+int spline_ocp_acados_update_params_sparse(spline_ocp_solver_capsule * capsule, int stage, int *idx, double *p, int n_update)
 {
     ocp_nlp_in_set_params_sparse(capsule->nlp_config, capsule->nlp_dims, capsule->nlp_in, stage, idx, p, n_update);
 
@@ -983,17 +952,17 @@ int mobile_robot_acados_update_params_sparse(mobile_robot_solver_capsule * capsu
 }
 
 
-int mobile_robot_acados_set_p_global_and_precompute_dependencies(mobile_robot_solver_capsule* capsule, double* data, int data_len)
+int spline_ocp_acados_set_p_global_and_precompute_dependencies(spline_ocp_solver_capsule* capsule, double* data, int data_len)
 {
 
-    printf("No global_data, mobile_robot_acados_set_p_global_and_precompute_dependencies does nothing.\n");
+    printf("No global_data, spline_ocp_acados_set_p_global_and_precompute_dependencies does nothing.\n");
     return 0;
 }
 
 
 
 
-int mobile_robot_acados_solve(mobile_robot_solver_capsule* capsule)
+int spline_ocp_acados_solve(spline_ocp_solver_capsule* capsule)
 {
     // solve NLP
     int solver_status = ocp_nlp_solve(capsule->nlp_solver, capsule->nlp_in, capsule->nlp_out);
@@ -1003,7 +972,7 @@ int mobile_robot_acados_solve(mobile_robot_solver_capsule* capsule)
 
 
 
-int mobile_robot_acados_setup_qp_matrices_and_factorize(mobile_robot_solver_capsule* capsule)
+int spline_ocp_acados_setup_qp_matrices_and_factorize(spline_ocp_solver_capsule* capsule)
 {
     int solver_status = ocp_nlp_setup_qp_matrices_and_factorize(capsule->nlp_solver, capsule->nlp_in, capsule->nlp_out);
 
@@ -1012,7 +981,7 @@ int mobile_robot_acados_setup_qp_matrices_and_factorize(mobile_robot_solver_caps
 
 
 
-void mobile_robot_acados_batch_solve(mobile_robot_solver_capsule ** capsules, int * status_out, int N_batch)
+void spline_ocp_acados_batch_solve(spline_ocp_solver_capsule ** capsules, int * status_out, int N_batch)
 {
 
     for (int i = 0; i < N_batch; i++)
@@ -1025,7 +994,7 @@ void mobile_robot_acados_batch_solve(mobile_robot_solver_capsule ** capsules, in
 }
 
 
-void mobile_robot_acados_batch_setup_qp_matrices_and_factorize(mobile_robot_solver_capsule ** capsules, int * status_out, int N_batch)
+void spline_ocp_acados_batch_setup_qp_matrices_and_factorize(spline_ocp_solver_capsule ** capsules, int * status_out, int N_batch)
 {
 
     for (int i = 0; i < N_batch; i++)
@@ -1038,7 +1007,7 @@ void mobile_robot_acados_batch_setup_qp_matrices_and_factorize(mobile_robot_solv
 }
 
 
-void mobile_robot_acados_batch_eval_params_jac(mobile_robot_solver_capsule ** capsules, int N_batch)
+void spline_ocp_acados_batch_eval_params_jac(spline_ocp_solver_capsule ** capsules, int N_batch)
 {
 
     for (int i = 0; i < N_batch; i++)
@@ -1052,7 +1021,7 @@ void mobile_robot_acados_batch_eval_params_jac(mobile_robot_solver_capsule ** ca
 
 
 
-void mobile_robot_acados_batch_eval_solution_sens_adj_p(mobile_robot_solver_capsule ** capsules, const char *field, int stage, double *out, int offset, int N_batch)
+void spline_ocp_acados_batch_eval_solution_sens_adj_p(spline_ocp_solver_capsule ** capsules, const char *field, int stage, double *out, int offset, int N_batch)
 {
 
 
@@ -1066,7 +1035,7 @@ void mobile_robot_acados_batch_eval_solution_sens_adj_p(mobile_robot_solver_caps
 }
 
 
-void mobile_robot_acados_batch_set_flat(mobile_robot_solver_capsule ** capsules, const char *field, double *data, int N_data, int N_batch)
+void spline_ocp_acados_batch_set_flat(spline_ocp_solver_capsule ** capsules, const char *field, double *data, int N_data, int N_batch)
 {
     int offset = ocp_nlp_dims_get_total_from_attr(capsules[0]->nlp_solver->config, capsules[0]->nlp_solver->dims, capsules[0]->nlp_out, field);
 
@@ -1088,7 +1057,7 @@ void mobile_robot_acados_batch_set_flat(mobile_robot_solver_capsule ** capsules,
 
 
 
-void mobile_robot_acados_batch_get_flat(mobile_robot_solver_capsule ** capsules, const char *field, double *data, int N_data, int N_batch)
+void spline_ocp_acados_batch_get_flat(spline_ocp_solver_capsule ** capsules, const char *field, double *data, int N_data, int N_batch)
 {
     int offset = ocp_nlp_dims_get_total_from_attr(capsules[0]->nlp_solver->config, capsules[0]->nlp_solver->dims, capsules[0]->nlp_out, field);
 
@@ -1109,7 +1078,7 @@ void mobile_robot_acados_batch_get_flat(mobile_robot_solver_capsule ** capsules,
 }
 
 
-int mobile_robot_acados_free(mobile_robot_solver_capsule* capsule)
+int spline_ocp_acados_free(spline_ocp_solver_capsule* capsule)
 {
     // before destroying, keep some info
     const int N = capsule->nlp_solver_plan->N;
@@ -1145,7 +1114,7 @@ int mobile_robot_acados_free(mobile_robot_solver_capsule* capsule)
 }
 
 
-void mobile_robot_acados_print_stats(mobile_robot_solver_capsule* capsule)
+void spline_ocp_acados_print_stats(spline_ocp_solver_capsule* capsule)
 {
     int nlp_iter, stat_m, stat_n, tmp_int;
     ocp_nlp_get(capsule->nlp_solver, "nlp_iter", &nlp_iter);
@@ -1171,7 +1140,7 @@ void mobile_robot_acados_print_stats(mobile_robot_solver_capsule* capsule)
     }
 }
 
-int mobile_robot_acados_custom_update(mobile_robot_solver_capsule* capsule, double* data, int data_len)
+int spline_ocp_acados_custom_update(spline_ocp_solver_capsule* capsule, double* data, int data_len)
 {
     (void)capsule;
     (void)data;
@@ -1184,11 +1153,11 @@ int mobile_robot_acados_custom_update(mobile_robot_solver_capsule* capsule, doub
 
 
 
-ocp_nlp_in *mobile_robot_acados_get_nlp_in(mobile_robot_solver_capsule* capsule) { return capsule->nlp_in; }
-ocp_nlp_out *mobile_robot_acados_get_nlp_out(mobile_robot_solver_capsule* capsule) { return capsule->nlp_out; }
-ocp_nlp_out *mobile_robot_acados_get_sens_out(mobile_robot_solver_capsule* capsule) { return capsule->sens_out; }
-ocp_nlp_solver *mobile_robot_acados_get_nlp_solver(mobile_robot_solver_capsule* capsule) { return capsule->nlp_solver; }
-ocp_nlp_config *mobile_robot_acados_get_nlp_config(mobile_robot_solver_capsule* capsule) { return capsule->nlp_config; }
-void *mobile_robot_acados_get_nlp_opts(mobile_robot_solver_capsule* capsule) { return capsule->nlp_opts; }
-ocp_nlp_dims *mobile_robot_acados_get_nlp_dims(mobile_robot_solver_capsule* capsule) { return capsule->nlp_dims; }
-ocp_nlp_plan_t *mobile_robot_acados_get_nlp_plan(mobile_robot_solver_capsule* capsule) { return capsule->nlp_solver_plan; }
+ocp_nlp_in *spline_ocp_acados_get_nlp_in(spline_ocp_solver_capsule* capsule) { return capsule->nlp_in; }
+ocp_nlp_out *spline_ocp_acados_get_nlp_out(spline_ocp_solver_capsule* capsule) { return capsule->nlp_out; }
+ocp_nlp_out *spline_ocp_acados_get_sens_out(spline_ocp_solver_capsule* capsule) { return capsule->sens_out; }
+ocp_nlp_solver *spline_ocp_acados_get_nlp_solver(spline_ocp_solver_capsule* capsule) { return capsule->nlp_solver; }
+ocp_nlp_config *spline_ocp_acados_get_nlp_config(spline_ocp_solver_capsule* capsule) { return capsule->nlp_config; }
+void *spline_ocp_acados_get_nlp_opts(spline_ocp_solver_capsule* capsule) { return capsule->nlp_opts; }
+ocp_nlp_dims *spline_ocp_acados_get_nlp_dims(spline_ocp_solver_capsule* capsule) { return capsule->nlp_dims; }
+ocp_nlp_plan_t *spline_ocp_acados_get_nlp_plan(spline_ocp_solver_capsule* capsule) { return capsule->nlp_solver_plan; }

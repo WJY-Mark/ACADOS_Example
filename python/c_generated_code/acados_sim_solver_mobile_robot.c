@@ -73,7 +73,7 @@ int mobile_robot_acados_sim_create(mobile_robot_sim_solver_capsule * capsule)
     const int np = MOBILE_ROBOT_NP;
     bool tmp_bool;
 
-    double Tsim = 0.2;
+    double Tsim = 0.1;
 
     external_function_opts ext_fun_opts;
     external_function_opts_set_to_default(&ext_fun_opts);

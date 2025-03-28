@@ -159,5 +159,5 @@ class MobileRobotOptimizer(object):
 if __name__ == '__main__':
     mobile_robot_model = MobileRobotModel()
     opt = MobileRobotOptimizer(m_model=mobile_robot_model.model,
-                               m_constraint=mobile_robot_model.constraint, t_horizon=20, n_nodes=100)
+                               m_constraint=mobile_robot_model.constraint, t_horizon=5.0, n_nodes=50)
     opt.simulation(x0=np.array([0, 0, 0]), xs=np.array([2., 2., 0.]))
