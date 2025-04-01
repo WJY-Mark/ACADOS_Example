@@ -172,8 +172,8 @@ int spline_ocp_acados_sim_create(spline_ocp_sim_solver_capsule * capsule)
 
     /* initialize input */
     // x
-    double x0[6];
-    for (int ii = 0; ii < 6; ii++)
+    double x0[8];
+    for (int ii = 0; ii < 8; ii++)
         x0[ii] = 0.0;
 
     sim_in_set(spline_ocp_sim_config, spline_ocp_sim_dims,
@@ -189,11 +189,11 @@ int spline_ocp_acados_sim_create(spline_ocp_sim_solver_capsule * capsule)
                spline_ocp_sim_in, "u", u0);
 
     // S_forw
-    double S_forw[48];
-    for (int ii = 0; ii < 48; ii++)
+    double S_forw[80];
+    for (int ii = 0; ii < 80; ii++)
         S_forw[ii] = 0.0;
-    for (int ii = 0; ii < 6; ii++)
-        S_forw[ii + ii * 6 ] = 1.0;
+    for (int ii = 0; ii < 8; ii++)
+        S_forw[ii + ii * 8 ] = 1.0;
 
 
     sim_in_set(spline_ocp_sim_config, spline_ocp_sim_dims,

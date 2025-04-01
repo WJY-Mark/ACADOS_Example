@@ -36,7 +36,7 @@
 #include "acados_c/ocp_nlp_interface.h"
 #include "acados_c/external_function_interface.h"
 
-#define SPLINE_OCP_NX     6
+#define SPLINE_OCP_NX     8
 #define SPLINE_OCP_NZ     0
 #define SPLINE_OCP_NU     2
 #define SPLINE_OCP_NP     0
@@ -58,12 +58,12 @@
 #define SPLINE_OCP_NS     0
 #define SPLINE_OCP_NS0    0
 #define SPLINE_OCP_NSN    0
-#define SPLINE_OCP_NG     0
+#define SPLINE_OCP_NG     4
 #define SPLINE_OCP_NBXN   2
-#define SPLINE_OCP_NGN    0
-#define SPLINE_OCP_NY0    8
-#define SPLINE_OCP_NY     8
-#define SPLINE_OCP_NYN    6
+#define SPLINE_OCP_NGN    4
+#define SPLINE_OCP_NY0    10
+#define SPLINE_OCP_NY     10
+#define SPLINE_OCP_NYN    8
 #define SPLINE_OCP_N      5
 #define SPLINE_OCP_NH     0
 #define SPLINE_OCP_NHN    0

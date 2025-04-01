@@ -34,7 +34,7 @@
 #include "acados_c/sim_interface.h"
 #include "acados_c/external_function_interface.h"
 
-#define SPLINE_OCP_NX     6
+#define SPLINE_OCP_NX     8
 #define SPLINE_OCP_NZ     0
 #define SPLINE_OCP_NU     2
 #define SPLINE_OCP_NP     0

@@ -440,13 +440,15 @@ void spline_ocp_acados_setup_nlp_in(spline_ocp_solver_capsule* capsule, const in
    double* W_0 = calloc(NY0*NY0, sizeof(double));
     // change only the non-zero elements:
     W_0[0+(NY0) * 0] = 0.1;
-    W_0[1+(NY0) * 1] = 1;
+    W_0[1+(NY0) * 1] = 10;
     W_0[2+(NY0) * 2] = 0.1;
     W_0[3+(NY0) * 3] = 0.1;
-    W_0[4+(NY0) * 4] = 1;
-    W_0[5+(NY0) * 5] = 0.1;
+    W_0[4+(NY0) * 4] = 0.1;
+    W_0[5+(NY0) * 5] = 10;
     W_0[6+(NY0) * 6] = 0.1;
     W_0[7+(NY0) * 7] = 0.1;
+    W_0[8+(NY0) * 8] = 0.1;
+    W_0[9+(NY0) * 9] = 0.1;
     ocp_nlp_cost_model_set(nlp_config, nlp_dims, nlp_in, 0, "W", W_0);
     free(W_0);
     double* Vx_0 = calloc(NY0*NX, sizeof(double));
@@ -457,11 +459,13 @@ void spline_ocp_acados_setup_nlp_in(spline_ocp_solver_capsule* capsule, const in
     Vx_0[3+(NY0) * 3] = 1;
     Vx_0[4+(NY0) * 4] = 1;
     Vx_0[5+(NY0) * 5] = 1;
+    Vx_0[6+(NY0) * 6] = 1;
+    Vx_0[7+(NY0) * 7] = 1;
     ocp_nlp_cost_model_set(nlp_config, nlp_dims, nlp_in, 0, "Vx", Vx_0);
     free(Vx_0);
     double* Vu_0 = calloc(NY0*NU, sizeof(double));
     // change only the non-zero elements:
-    Vu_0[7+(NY0) * 0] = 1;
+    Vu_0[9+(NY0) * 0] = 1;
     ocp_nlp_cost_model_set(nlp_config, nlp_dims, nlp_in, 0, "Vu", Vu_0);
     free(Vu_0);
     double* yref = calloc(NY, sizeof(double));
@@ -475,13 +479,15 @@ void spline_ocp_acados_setup_nlp_in(spline_ocp_solver_capsule* capsule, const in
     double* W = calloc(NY*NY, sizeof(double));
     // change only the non-zero elements:
     W[0+(NY) * 0] = 0.1;
-    W[1+(NY) * 1] = 1;
+    W[1+(NY) * 1] = 10;
     W[2+(NY) * 2] = 0.1;
     W[3+(NY) * 3] = 0.1;
-    W[4+(NY) * 4] = 1;
-    W[5+(NY) * 5] = 0.1;
+    W[4+(NY) * 4] = 0.1;
+    W[5+(NY) * 5] = 10;
     W[6+(NY) * 6] = 0.1;
     W[7+(NY) * 7] = 0.1;
+    W[8+(NY) * 8] = 0.1;
+    W[9+(NY) * 9] = 0.1;
 
     for (int i = 1; i < N; i++)
     {
@@ -496,6 +502,8 @@ void spline_ocp_acados_setup_nlp_in(spline_ocp_solver_capsule* capsule, const in
     Vx[3+(NY) * 3] = 1;
     Vx[4+(NY) * 4] = 1;
     Vx[5+(NY) * 5] = 1;
+    Vx[6+(NY) * 6] = 1;
+    Vx[7+(NY) * 7] = 1;
     for (int i = 1; i < N; i++)
     {
         ocp_nlp_cost_model_set(nlp_config, nlp_dims, nlp_in, i, "Vx", Vx);
@@ -505,7 +513,7 @@ void spline_ocp_acados_setup_nlp_in(spline_ocp_solver_capsule* capsule, const in
     
     double* Vu = calloc(NY*NU, sizeof(double));
     // change only the non-zero elements:
-    Vu[7+(NY) * 0] = 1;
+    Vu[9+(NY) * 0] = 1;
 
     for (int i = 1; i < N; i++)
     {
@@ -520,11 +528,13 @@ void spline_ocp_acados_setup_nlp_in(spline_ocp_solver_capsule* capsule, const in
     double* W_e = calloc(NYN*NYN, sizeof(double));
     // change only the non-zero elements:
     W_e[0+(NYN) * 0] = 0.1;
-    W_e[1+(NYN) * 1] = 1;
+    W_e[1+(NYN) * 1] = 10;
     W_e[2+(NYN) * 2] = 0.1;
     W_e[3+(NYN) * 3] = 0.1;
-    W_e[4+(NYN) * 4] = 1;
-    W_e[5+(NYN) * 5] = 0.1;
+    W_e[4+(NYN) * 4] = 0.1;
+    W_e[5+(NYN) * 5] = 10;
+    W_e[6+(NYN) * 6] = 0.1;
+    W_e[7+(NYN) * 7] = 0.1;
     ocp_nlp_cost_model_set(nlp_config, nlp_dims, nlp_in, N, "W", W_e);
     free(W_e);
     double* Vx_e = calloc(NYN*NX, sizeof(double));
@@ -535,6 +545,8 @@ void spline_ocp_acados_setup_nlp_in(spline_ocp_solver_capsule* capsule, const in
     Vx_e[3+(NYN) * 3] = 1;
     Vx_e[4+(NYN) * 4] = 1;
     Vx_e[5+(NYN) * 5] = 1;
+    Vx_e[6+(NYN) * 6] = 1;
+    Vx_e[7+(NYN) * 7] = 1;
     ocp_nlp_cost_model_set(nlp_config, nlp_dims, nlp_in, N, "Vx", Vx_e);
     free(Vx_e);
 
@@ -550,8 +562,8 @@ void spline_ocp_acados_setup_nlp_in(spline_ocp_solver_capsule* capsule, const in
     int* idxbx0 = malloc(NBX0 * sizeof(int));
     idxbx0[0] = 0;
     idxbx0[1] = 1;
-    idxbx0[2] = 3;
-    idxbx0[3] = 4;
+    idxbx0[2] = 4;
+    idxbx0[3] = 5;
 
     double* lubx0 = calloc(2*NBX0, sizeof(double));
     double* lbx0 = lubx0;
@@ -590,8 +602,8 @@ void spline_ocp_acados_setup_nlp_in(spline_ocp_solver_capsule* capsule, const in
 
     // x
     int* idxbx = malloc(NBX * sizeof(int));
-    idxbx[0] = 0;
-    idxbx[1] = 3;
+    idxbx[0] = 1;
+    idxbx[1] = 5;
     double* lubx = calloc(2*NBX, sizeof(double));
     double* lbx = lubx;
     double* ubx = lubx + NBX;
@@ -610,6 +622,31 @@ void spline_ocp_acados_setup_nlp_in(spline_ocp_solver_capsule* capsule, const in
     free(lubx);
 
 
+    // set up general constraints for stage 0 to N-1
+    double* D = calloc(NG*NU, sizeof(double));
+    double* C = calloc(NG*NX, sizeof(double));
+    double* lug = calloc(2*NG, sizeof(double));
+    double* lg = lug;
+    double* ug = lug + NG;
+    lg[0] = -10000000000;
+    lg[1] = -10000000000;
+    lg[2] = -10000000000;
+    lg[3] = -10000000000;
+    ug[0] = 10000000000;
+    ug[1] = 10000000000;
+    ug[2] = 10000000000;
+    ug[3] = 10000000000;
+
+    for (int i = 0; i < N; i++)
+    {
+        ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, i, "D", D);
+        ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, i, "C", C);
+        ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, i, "lg", lg);
+        ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, i, "ug", ug);
+    }
+    free(D);
+    free(C);
+    free(lug);
 
 
 
@@ -620,8 +657,8 @@ void spline_ocp_acados_setup_nlp_in(spline_ocp_solver_capsule* capsule, const in
     // set up bounds for last stage
     // x
     int* idxbx_e = malloc(NBXN * sizeof(int));
-    idxbx_e[0] = 0;
-    idxbx_e[1] = 3;
+    idxbx_e[0] = 1;
+    idxbx_e[1] = 5;
     double* lubx_e = calloc(2*NBXN, sizeof(double));
     double* lbx_e = lubx_e;
     double* ubx_e = lubx_e + NBXN;
@@ -644,6 +681,25 @@ void spline_ocp_acados_setup_nlp_in(spline_ocp_solver_capsule* capsule, const in
 
 
 
+    // set up general constraints for last stage
+    double* C_e = calloc(NGN*NX, sizeof(double));
+    double* lug_e = calloc(2*NGN, sizeof(double));
+    double* lg_e = lug_e;
+    double* ug_e = lug_e + NGN;
+    lg_e[0] = -10000000000;
+    ug_e[0] = 10000000000;
+    lg_e[1] = -10000000000;
+    ug_e[1] = 10000000000;
+    lg_e[2] = -10000000000;
+    ug_e[2] = 10000000000;
+    lg_e[3] = -10000000000;
+    ug_e[3] = 10000000000;
+
+    ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, N, "C", C_e);
+    ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, N, "lg", lg_e);
+    ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, N, "ug", ug_e);
+    free(C_e);
+    free(lug_e);
 
 
 }
@@ -1122,7 +1178,7 @@ void spline_ocp_acados_print_stats(spline_ocp_solver_capsule* capsule)
     ocp_nlp_get(capsule->nlp_solver, "stat_m", &stat_m);
 
 
-    double stat[1200];
+    double stat[24];
     ocp_nlp_get(capsule->nlp_solver, "statistics", stat);
 
     int nrow = nlp_iter+1 < stat_m ? nlp_iter+1 : stat_m;
