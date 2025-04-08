@@ -562,8 +562,10 @@ void spline_ocp_acados_setup_nlp_in(spline_ocp_solver_capsule* capsule, const in
     int* idxbx0 = malloc(NBX0 * sizeof(int));
     idxbx0[0] = 0;
     idxbx0[1] = 1;
-    idxbx0[2] = 4;
-    idxbx0[3] = 5;
+    idxbx0[2] = 2;
+    idxbx0[3] = 4;
+    idxbx0[4] = 5;
+    idxbx0[5] = 6;
 
     double* lubx0 = calloc(2*NBX0, sizeof(double));
     double* lbx0 = lubx0;
@@ -577,6 +579,10 @@ void spline_ocp_acados_setup_nlp_in(spline_ocp_solver_capsule* capsule, const in
     ubx0[2] = 10000000000;
     lbx0[3] = -10000000000;
     ubx0[3] = 10000000000;
+    lbx0[4] = -10000000000;
+    ubx0[4] = 10000000000;
+    lbx0[5] = -10000000000;
+    ubx0[5] = 10000000000;
 
     ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, 0, "idxbx", idxbx0);
     ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, 0, "lbx", lbx0);
@@ -600,26 +606,6 @@ void spline_ocp_acados_setup_nlp_in(spline_ocp_solver_capsule* capsule, const in
 
 
 
-    // x
-    int* idxbx = malloc(NBX * sizeof(int));
-    idxbx[0] = 1;
-    idxbx[1] = 5;
-    double* lubx = calloc(2*NBX, sizeof(double));
-    double* lbx = lubx;
-    double* ubx = lubx + NBX;
-    lbx[0] = -10000000000;
-    ubx[0] = 10000000000;
-    lbx[1] = -10000000000;
-    ubx[1] = 10000000000;
-
-    for (int i = 1; i < N; i++)
-    {
-        ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, i, "idxbx", idxbx);
-        ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, i, "lbx", lbx);
-        ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, i, "ubx", ubx);
-    }
-    free(idxbx);
-    free(lubx);
 
 
     // set up general constraints for stage 0 to N-1
@@ -628,6 +614,7 @@ void spline_ocp_acados_setup_nlp_in(spline_ocp_solver_capsule* capsule, const in
     double* lug = calloc(2*NG, sizeof(double));
     double* lg = lug;
     double* ug = lug + NG;
+    C[1+NG * 2] = 1;
     lg[0] = -10000000000;
     lg[1] = -10000000000;
     lg[2] = -10000000000;
@@ -654,23 +641,6 @@ void spline_ocp_acados_setup_nlp_in(spline_ocp_solver_capsule* capsule, const in
 
     /* terminal constraints */
 
-    // set up bounds for last stage
-    // x
-    int* idxbx_e = malloc(NBXN * sizeof(int));
-    idxbx_e[0] = 1;
-    idxbx_e[1] = 5;
-    double* lubx_e = calloc(2*NBXN, sizeof(double));
-    double* lbx_e = lubx_e;
-    double* ubx_e = lubx_e + NBXN;
-    lbx_e[0] = -10000000000;
-    ubx_e[0] = 10000000000;
-    lbx_e[1] = -10000000000;
-    ubx_e[1] = 10000000000;
-    ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, N, "idxbx", idxbx_e);
-    ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, N, "lbx", lbx_e);
-    ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, N, "ubx", ubx_e);
-    free(idxbx_e);
-    free(lubx_e);
 
 
 

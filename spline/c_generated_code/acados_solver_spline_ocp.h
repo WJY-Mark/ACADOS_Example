@@ -41,8 +41,8 @@
 #define SPLINE_OCP_NU     2
 #define SPLINE_OCP_NP     0
 #define SPLINE_OCP_NP_GLOBAL     0
-#define SPLINE_OCP_NBX    2
-#define SPLINE_OCP_NBX0   4
+#define SPLINE_OCP_NBX    0
+#define SPLINE_OCP_NBX0   6
 #define SPLINE_OCP_NBU    0
 #define SPLINE_OCP_NSBX   0
 #define SPLINE_OCP_NSBU   0
@@ -59,7 +59,7 @@
 #define SPLINE_OCP_NS0    0
 #define SPLINE_OCP_NSN    0
 #define SPLINE_OCP_NG     4
-#define SPLINE_OCP_NBXN   2
+#define SPLINE_OCP_NBXN   0
 #define SPLINE_OCP_NGN    4
 #define SPLINE_OCP_NY0    10
 #define SPLINE_OCP_NY     10

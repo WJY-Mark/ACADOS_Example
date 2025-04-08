@@ -42,9 +42,9 @@ if OBB_CNSTR:
 if VEL_CNSTR:
     C_DIM +=2
 
-X0_SeconOrderDerivativeConstraint = False
-X_FirstOrderDerivativeConstraint = True
-Xe_FirstOrderDerivativeConstraint = True
+X0_SeconOrderDerivativeConstraint = True
+X_FirstOrderDerivativeConstraint = False
+Xe_FirstOrderDerivativeConstraint = False
 
 
 def safe_mkdir_recursive(directory, overwrite=False):
