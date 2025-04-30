@@ -228,7 +228,7 @@ class SplineOcpOpt(object):
         # ocp.solver_options.sim_method_num_steps = 1
         ocp.solver_options.print_level = 0
         ocp.solver_options.tol = 1e-4
-        ocp.solver_options.nlp_solver_max_iter = 2
+        ocp.solver_options.nlp_solver_max_iter = 100
         # compile acados ocp
         json_file = os.path.join("./" + model.name + "_acados_ocp.json")
         self.solver = AcadosOcpSolver(ocp, json_file=json_file)
@@ -377,20 +377,20 @@ def solve_problem(
                     C[dim, Y_XIDX] = math.sin(theta)
                     C[dim+1, X_XIDX] = -math.sin(theta)
                     C[dim+1, Y_XIDX] = math.cos(theta)
-                    ug[dim] = math.cos(theta)*dyn_point.x + math.sin(theta)*dyn_point.y + LON_BOUND
-                    ug[dim+1] = -math.sin(theta)*dyn_point.x + math.cos(theta)*dyn_point.y + LAT_BOUND
                     lg[dim] = math.cos(theta)*dyn_point.x + math.sin(theta)*dyn_point.y - LON_BOUND
+                    ug[dim] = math.cos(theta)*dyn_point.x + math.sin(theta)*dyn_point.y + LON_BOUND
                     lg[dim+1] = -math.sin(theta)*dyn_point.x + math.cos(theta)*dyn_point.y - LAT_BOUND
+                    ug[dim+1] = -math.sin(theta)*dyn_point.x + math.cos(theta)*dyn_point.y + LAT_BOUND
                     dim += 2
                 if VEL_E_CNSTR:
                     C[dim, DX_XIDX] = math.cos(theta)
                     C[dim, DY_XIDX] = math.sin(theta)
                     C[dim+1, DX_XIDX] = -math.sin(theta)
                     C[dim+1, DY_XIDX] = math.cos(theta)
-                    ug[dim] = dyn_point.v + LON_VEL_BOUND
-                    ug[dim+1] = LAT_VEL_BOUND
                     lg[dim] = dyn_point.v - LON_VEL_BOUND
+                    ug[dim] = dyn_point.v + LON_VEL_BOUND
                     lg[dim+1] = -LAT_VEL_BOUND
+                    ug[dim+1] = LAT_VEL_BOUND
                     dim+=2
                 acados_solver.constraints_set(i, "C", C, 'new')
                 acados_solver.constraints_set(i, "ug", ug, 'new')
