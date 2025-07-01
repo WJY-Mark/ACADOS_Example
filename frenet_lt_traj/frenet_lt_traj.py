@@ -11,6 +11,7 @@ import errno
 import timeit
 
 import time
+import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 from matplotlib.transforms import Affine2D
@@ -405,7 +406,7 @@ def plot_acados_results(x, u, x_lb, x_ub, u_lb, u_ub, N, tf):
     plt.tight_layout()
 
 
-def visualize_in_cartesian(x, u, N, tf, vel=10.0, kr=0.01):
+def visualize_in_cartesian(x, u, N, tf, vel, kr):
     """
     Visualize the reference line and vehicle trajectory in Cartesian coordinates
 
@@ -446,20 +447,20 @@ def visualize_in_cartesian(x, u, N, tf, vel=10.0, kr=0.01):
     # Simulate reference line and vehicle trajectory
     for i in range(1, N+1):
         # Reference line dynamics (constant curvature kr)
-        ref_theta[i] = ref_theta[i-1] + vel * kr * dt
-        ref_x[i] = ref_x[i-1] + vel * np.cos(ref_theta[i-1]) * dt
-        ref_y[i] = ref_y[i-1] + vel * np.sin(ref_theta[i-1]) * dt
+        ref_theta[i] = ref_theta[i-1] + vel[i-1] * kr[i-1] * dt
+        ref_x[i] = ref_x[i-1] + vel[i-1] * np.cos(ref_theta[i-1]) * dt
+        ref_y[i] = ref_y[i-1] + vel[i-1] * np.sin(ref_theta[i-1]) * dt
 
         # Vehicle dynamics
         kappa = x[i-1, 2]
         delta_theta = x[i-1, 1]
 
         # Update vehicle heading (theta = ref_theta + delta_theta)
-        veh_theta[i] = veh_theta[i-1] + vel * kappa * dt
+        veh_theta[i] = veh_theta[i-1] + vel[i-1] * kappa * dt
 
         # Update vehicle position (Frenet to Cartesian)
-        veh_x[i] = veh_x[i-1] + vel * np.cos(veh_theta[i-1]) * dt
-        veh_y[i] = veh_y[i-1] + vel * np.sin(veh_theta[i-1]) * dt
+        veh_x[i] = veh_x[i-1] + vel[i-1] * np.cos(veh_theta[i-1]) * dt
+        veh_y[i] = veh_y[i-1] + vel[i-1] * np.sin(veh_theta[i-1]) * dt
 
     # Plotting
     plt.figure(figsize=(12, 6))
@@ -496,8 +497,8 @@ def visualize_in_cartesian(x, u, N, tf, vel=10.0, kr=0.01):
     # Plot curvature comparison
     plt.figure(figsize=(12, 4))
     plt.plot(t_x, x[:, 2], 'r-', label='Vehicle curvature (kappa)')
-    plt.axhline(y=kr, color='b', linestyle='-',
-                label='Reference curvature (kr)')
+    plt.plot(t_x, kr, 'b-', label='Reference curvature (kappa)')
+
     plt.xlabel('Time (s)')
     plt.ylabel('Curvature (1/m)')
     plt.title('Vehicle Curvature vs Reference Curvature')
@@ -508,6 +509,8 @@ def visualize_in_cartesian(x, u, N, tf, vel=10.0, kr=0.01):
 
 
 if __name__ == "__main__":
+
+    matplotlib.set_loglevel("warning")
     N = 50
     tf = 5.0
     acados_solver, sim_solver = set_acados_model(N, tf)
@@ -522,8 +525,10 @@ if __name__ == "__main__":
 
     x_lb, x_ub, u_lb, u_ub, xu_lb, xu_ub = get_bounds()
 
+    params = [np.array([VEL+i*0.1, KR+i*0.001]) for i in range(0, N+1)]
+
     for i in range(0, N+1):
-        acados_solver.set(i, 'p', np.array([VEL, KR]))
+        acados_solver.set(i, 'p', params[i])
         if ADD_BOUND_CONSTRAINT:
             # set the bounds for the control variables
             if i < N:
@@ -555,5 +560,9 @@ if __name__ == "__main__":
         print(f"u[{i}]: {u[i]}")
     print(f"x[{N}]: {x[N]}")
     plot_acados_results(x, u, x_lb, x_ub, u_lb, u_ub, N, tf)
-    visualize_in_cartesian(x, u, N, tf, vel=VEL, kr=KR)
+
+    vel = [params[i][0] for i in range(N+1)]
+    kr = [params[i][1] for i in range(N+1)]
+    visualize_in_cartesian(x, u, N, tf, vel, kr)
     plt.show()
+    pass
