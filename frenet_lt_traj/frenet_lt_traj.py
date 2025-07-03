@@ -304,7 +304,7 @@ def get_bounds():
                 np.array([L_INIT, THETA_INIT, KAPPA_INIT, DKAPPA_LOWER_BOUND]))
             xu_ub.append(
                 np.array([L_INIT, THETA_INIT, KAPPA_INIT, DKAPPA_UPPER_BOUND]))
-        elif i < 40:
+        elif i < N*0.8:
             x_lb.append(np.array(
                 [L_LOWER_BOUND, THETA_LOWER_BOUND, KAPPA_LOWER_BOUND]))
             x_ub.append(np.array(
@@ -512,6 +512,7 @@ if __name__ == "__main__":
 
     matplotlib.set_loglevel("warning")
     N = 50
+    # N = 250
     tf = 5.0
     acados_solver, sim_solver = set_acados_model(N, tf)
     xx = np.array([0.1, 0.1, 0.01])
@@ -525,7 +526,7 @@ if __name__ == "__main__":
 
     x_lb, x_ub, u_lb, u_ub, xu_lb, xu_ub = get_bounds()
 
-    params = [np.array([VEL+i*0.1, KR+i*0.001]) for i in range(0, N+1)]
+    params = [np.array([VEL+i*1*tf/N, KR+i*0.01*tf/N]) for i in range(0, N+1)]
 
     for i in range(0, N+1):
         acados_solver.set(i, 'p', params[i])
