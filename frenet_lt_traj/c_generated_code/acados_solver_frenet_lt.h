@@ -41,9 +41,9 @@
 #define FRENET_LT_NU     1
 #define FRENET_LT_NP     2
 #define FRENET_LT_NP_GLOBAL     0
-#define FRENET_LT_NBX    3
+#define FRENET_LT_NBX    0
 #define FRENET_LT_NBX0   3
-#define FRENET_LT_NBU    1
+#define FRENET_LT_NBU    0
 #define FRENET_LT_NSBX   0
 #define FRENET_LT_NSBU   0
 #define FRENET_LT_NSH    0
@@ -59,12 +59,12 @@
 #define FRENET_LT_NS0    0
 #define FRENET_LT_NSN    0
 #define FRENET_LT_NG     0
-#define FRENET_LT_NBXN   3
+#define FRENET_LT_NBXN   0
 #define FRENET_LT_NGN    0
 #define FRENET_LT_NY0    4
 #define FRENET_LT_NY     4
 #define FRENET_LT_NYN    3
-#define FRENET_LT_N      50
+#define FRENET_LT_N      100
 #define FRENET_LT_NH     0
 #define FRENET_LT_NHN    0
 #define FRENET_LT_NH0    0

@@ -33,9 +33,9 @@ handler.setFormatter(formatter)
 logger.addHandler(handler)
 logger.setLevel(logging.DEBUG)
 
-THETA_UPPER_BOUND = 0.5*np.pi
-KAPPA_UPPER_BOUND = 0.1
-DKAPPA_UPPER_BOUND = 0.5
+THETA_UPPER_BOUND = 1.0*np.pi/180.0
+KAPPA_UPPER_BOUND = 0.01
+DKAPPA_UPPER_BOUND = 0.1
 L_UPPER_BOUND = 2.0
 
 THETA_LOWER_BOUND = -THETA_UPPER_BOUND
@@ -43,15 +43,25 @@ KAPPA_LOWER_BOUND = -KAPPA_UPPER_BOUND
 DKAPPA_LOWER_BOUND = -DKAPPA_UPPER_BOUND
 L_LOWER_BOUND = -L_UPPER_BOUND
 
-L_INIT = 1.0
+L_INIT = 0.0
 THETA_INIT = 0.0
-KAPPA_INIT = -0.02
+KAPPA_INIT = 0.0
 
-VEL = 10.0
-KR = 0.01
+VEL = 30.0
+DELTA_VEL = 0.0
+KR = 0.0
+DELTA_KR = 0.0
 
 ADD_C_D_CONSTRAINT = False
-ADD_BOUND_CONSTRAINT = True
+ADD_INIT_CONSTRAINT = True
+ADD_BOUND_CONSTRAINT = False
+USE_STATE_REF = True
+
+#Bryson's rule for the initial guess
+L_COEF = 0.000625
+DTHETA_COEF = 0.328
+K_COEF = 6.25
+DK_COEF = 0.0625
 
 
 def export_simple_frenet_model():
@@ -174,10 +184,11 @@ def set_acados_model(stage_n, tf):
     ocp.dims.nsh = 0    # number of soft nonlinear constraints
     ocp.dims.ns = 0     # total number of slacks
     ocp.dims.nsg = 0     # total number of slacks
-    l_coeff = 100.0
-    dtheta_coeff = 0.1
-    k_coeff = 1.0
-    dk_coeff = 10.0
+
+    l_coeff = L_COEF
+    dtheta_coeff = DTHETA_COEF
+    k_coeff = K_COEF
+    dk_coeff = DK_COEF
     # cost functions and weights setting
     ocp.cost.cost_type = "LINEAR_LS"  # cost type, default format
     Q = np.eye(ocp.dims.nx)
@@ -236,7 +247,12 @@ def set_acados_model(stage_n, tf):
             [L_UPPER_BOUND, THETA_UPPER_BOUND, KAPPA_UPPER_BOUND])
 
     # ocp.constraints.lsg = np.array([1.0])
-
+    if ADD_INIT_CONSTRAINT:
+        ocp.constraints.lbx_0 = np.array(
+            [L_LOWER_BOUND, THETA_LOWER_BOUND, KAPPA_LOWER_BOUND])
+        ocp.constraints.ubx_0 = np.array(
+            [L_UPPER_BOUND, THETA_UPPER_BOUND, KAPPA_UPPER_BOUND])
+        ocp.constraints.idxbx_0 = np.array([0, 1, 2])
     # state constraints
     if ADD_BOUND_CONSTRAINT:
         ocp.constraints.lbx_0 = np.array(
@@ -284,6 +300,25 @@ def set_acados_model(stage_n, tf):
     integrator = AcadosSimSolver(ocp, json_file=json_file)
     return acados_solver, integrator
 
+def get_reference(N):
+
+    y_ref = []
+    for i in range(N):
+        ref = np.zeros(4)  # [l, delta_theta, k, dk]
+        if i<N*0.2:
+            ref[0] = 0.0
+        elif i<N*0.6:
+            ref[0] = 3.0
+        else:
+            ref[0] = 0.0
+        # ref[1] = 0.0  # delta_theta_ref = 0.0
+        # ref[2] = 0.0  # k_ref = 0.0
+        # ref[3] = 0.0  # dk_ref = 0.0
+        y_ref.append(ref)
+    
+    y_ref_e = np.zeros(3)  # [l, delta_theta, k]
+    y_ref_e[0] = 0.0
+    return y_ref, y_ref_e
 
 def get_bounds():
     x_ub = []
@@ -334,7 +369,7 @@ def get_bounds():
     return x_lb, x_ub, u_lb, u_ub, xu_lb, xu_ub
 
 
-def plot_acados_results(x, u, x_lb, x_ub, u_lb, u_ub, N, tf):
+def plot_acados_results(x, u, x_lb, x_ub, u_lb, u_ub, N, tf, y_ref=None, y_ref_e=None):
     """
     Plot the results from Acados solver including states and control with bounds
 
@@ -347,6 +382,8 @@ def plot_acados_results(x, u, x_lb, x_ub, u_lb, u_ub, N, tf):
         u_ub: List of upper bounds for controls
         N: Number of control intervals
         tf: Final time
+        y_ref: List of reference vectors for stages 0 to N-1, shape (ny,) = (4,)
+        y_ref_e: Terminal reference vector for stage N, shape (nx,) = (3,)
     """
     # Convert lists to numpy arrays
     x = np.array(x)
@@ -356,6 +393,19 @@ def plot_acados_results(x, u, x_lb, x_ub, u_lb, u_ub, N, tf):
     u_lb = np.array(u_lb)
     u_ub = np.array(u_ub)
 
+    # Process reference values if provided
+    if y_ref is not None and y_ref_e is not None:
+        y_ref_arr = np.array(y_ref)  # shape: (N, 4)
+        y_ref_e_arr = np.array(y_ref_e)  # shape: (3,)
+        # Build full reference arrays for all N+1 time steps
+        l_ref = np.concatenate([y_ref_arr[:, 0], [y_ref_e_arr[0]]])
+        dtheta_ref = np.concatenate([y_ref_arr[:, 1], [y_ref_e_arr[1]]])
+        kappa_ref = np.concatenate([y_ref_arr[:, 2], [y_ref_e_arr[2]]])
+        dk_ref = y_ref_arr[:, 3]  # only N steps for control
+        has_ref = True
+    else:
+        has_ref = False
+
     # Create time vectors
     t_x = np.linspace(0, tf, N+1)  # Time for states
     t_u = np.linspace(0, tf, N)    # Time for controls
@@ -364,9 +414,12 @@ def plot_acados_results(x, u, x_lb, x_ub, u_lb, u_ub, N, tf):
 
     # Plot lateral deviation (l)
     plt.subplot(4, 1, 1)
-    plt.plot(t_x, x[:, 0], 'b-', label='l')
-    plt.plot(t_x, x_lb[:, 0], 'r--', label='l lower bound')
-    plt.plot(t_x, x_ub[:, 0], 'g--', label='l upper bound')
+    plt.plot(t_x, x[:, 0], 'b-', linewidth=2, label='l')
+    if has_ref:
+        plt.step(t_x, l_ref, 'm-', linewidth=1.5, where='post', label='l_ref')
+    if ADD_BOUND_CONSTRAINT:
+        plt.plot(t_x, x_lb[:, 0], 'r--', label='l lower bound')
+        plt.plot(t_x, x_ub[:, 0], 'g--', label='l upper bound')
     plt.ylabel('l (m)')
     plt.title('Lateral Deviation')
     plt.legend()
@@ -374,9 +427,12 @@ def plot_acados_results(x, u, x_lb, x_ub, u_lb, u_ub, N, tf):
 
     # Plot heading angle (theta)
     plt.subplot(4, 1, 2)
-    plt.plot(t_x, x[:, 1], 'b-', label='theta')
-    plt.plot(t_x, x_lb[:, 1], 'r--', label='theta lower bound')
-    plt.plot(t_x, x_ub[:, 1], 'g--', label='theta upper bound')
+    plt.plot(t_x, x[:, 1], 'b-', linewidth=2, label='delta_theta')
+    if has_ref:
+        plt.step(t_x, dtheta_ref, 'm-', linewidth=1.5, where='post', label='delta_theta_ref')
+    if ADD_BOUND_CONSTRAINT:
+        plt.plot(t_x, x_lb[:, 1], 'r--', label='theta lower bound')
+        plt.plot(t_x, x_ub[:, 1], 'g--', label='theta upper bound')
     plt.ylabel('theta (rad)')
     plt.title('Heading Angle')
     plt.legend()
@@ -384,9 +440,12 @@ def plot_acados_results(x, u, x_lb, x_ub, u_lb, u_ub, N, tf):
 
     # Plot curvature (kappa)
     plt.subplot(4, 1, 3)
-    plt.plot(t_x, x[:, 2], 'b-', label='kappa')
-    plt.plot(t_x, x_lb[:, 2], 'r--', label='kappa lower bound')
-    plt.plot(t_x, x_ub[:, 2], 'g--', label='kappa upper bound')
+    plt.plot(t_x, x[:, 2], 'b-', linewidth=2, label='kappa')
+    if has_ref:
+        plt.step(t_x, kappa_ref, 'm-', linewidth=1.5, where='post', label='kappa_ref')
+    if ADD_BOUND_CONSTRAINT:
+        plt.plot(t_x, x_lb[:, 2], 'r--', label='kappa lower bound')
+        plt.plot(t_x, x_ub[:, 2], 'g--', label='kappa upper bound')
     plt.ylabel('kappa (1/m)')
     plt.title('Curvature')
     plt.legend()
@@ -394,9 +453,12 @@ def plot_acados_results(x, u, x_lb, x_ub, u_lb, u_ub, N, tf):
 
     # Plot curvature rate (dkappa)
     plt.subplot(4, 1, 4)
-    plt.step(t_u, u[:, 0], 'b-', where='post', label='dkappa')
-    plt.plot(t_u, u_lb[:, 0], 'r--', label='dkappa lower bound')
-    plt.plot(t_u, u_ub[:, 0], 'g--', label='dkappa upper bound')
+    plt.step(t_u, u[:, 0], 'b-', linewidth=2, where='post', label='dkappa')
+    if has_ref:
+        plt.step(t_u, dk_ref, 'm-', linewidth=1.5, where='post', label='dk_ref')
+    if ADD_BOUND_CONSTRAINT:
+        plt.plot(t_u, u_lb[:, 0], 'r--', label='dkappa lower bound')
+        plt.plot(t_u, u_ub[:, 0], 'g--', label='dkappa upper bound')
     plt.xlabel('Time (s)')
     plt.ylabel('dkappa (1/m^2)')
     plt.title('Curvature Rate')
@@ -525,8 +587,10 @@ if __name__ == "__main__":
     NEW_L_BOUND = 0.5
 
     x_lb, x_ub, u_lb, u_ub, xu_lb, xu_ub = get_bounds()
+    y_ref, y_ref_e = get_reference(N)
+    x0 = np.array([L_INIT, THETA_INIT, KAPPA_INIT])
 
-    params = [np.array([VEL+i*1*tf/N, KR+i*0.01*tf/N]) for i in range(0, N+1)]
+    params = [np.array([VEL+i*DELTA_VEL*tf/N, KR+i*DELTA_KR*tf/N]) for i in range(0, N+1)]
 
     for i in range(0, N+1):
         acados_solver.set(i, 'p', params[i])
@@ -545,9 +609,15 @@ if __name__ == "__main__":
             else:
                 acados_solver.constraints_set(i, "lg", x_lb[i])
                 acados_solver.constraints_set(i, "ug", x_ub[i])
+        if USE_STATE_REF:
+            if i < N:
+                acados_solver.cost_set(i, "yref", y_ref[i])
+            else:
+                acados_solver.cost_set(i, "yref", y_ref_e)
+
 
     start_time = time.perf_counter()
-    status = acados_solver.solve()
+    status = acados_solver.solve_for_x0(x0)
     end_time = time.perf_counter()
     nlp_iter = acados_solver.get_stats("nlp_iter")
     sqp_iter = acados_solver.get_stats("sqp_iter")
@@ -556,11 +626,11 @@ if __name__ == "__main__":
     u = [acados_solver.get(i, "u") for i in range(N)]
     print(
         f"Elapsed time: {elapsed_time:.2f} ms status: {status} nlp_iter: {nlp_iter} sqp_iter: {sqp_iter}")
-    for i in range(N):
-        print(f"x[{i}]: {x[i]}")
-        print(f"u[{i}]: {u[i]}")
+    # for i in range(N):
+    #     print(f"x[{i}]: {x[i]}")
+    #     print(f"u[{i}]: {u[i]}")
     print(f"x[{N}]: {x[N]}")
-    plot_acados_results(x, u, x_lb, x_ub, u_lb, u_ub, N, tf)
+    plot_acados_results(x, u, x_lb, x_ub, u_lb, u_ub, N, tf, y_ref, y_ref_e)
 
     vel = [params[i][0] for i in range(N+1)]
     kr = [params[i][1] for i in range(N+1)]

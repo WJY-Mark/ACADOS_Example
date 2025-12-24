@@ -411,64 +411,114 @@ void frenet_lt_acados_setup_nlp_in(frenet_lt_solver_capsule* capsule, const int 
     else
     {
         // set time_steps
-    double time_step = 0.1;
+    double time_step = 0.05;
         for (int i = 0; i < N; i++)
         {
             ocp_nlp_in_set(nlp_config, nlp_dims, nlp_in, i, "Ts", &time_step);
         }
         // set cost scaling
         double* cost_scaling = malloc((N+1)*sizeof(double));
-        cost_scaling[0] = 0.1;
-        cost_scaling[1] = 0.1;
-        cost_scaling[2] = 0.1;
-        cost_scaling[3] = 0.1;
-        cost_scaling[4] = 0.1;
-        cost_scaling[5] = 0.1;
-        cost_scaling[6] = 0.1;
-        cost_scaling[7] = 0.1;
-        cost_scaling[8] = 0.1;
-        cost_scaling[9] = 0.1;
-        cost_scaling[10] = 0.1;
-        cost_scaling[11] = 0.1;
-        cost_scaling[12] = 0.1;
-        cost_scaling[13] = 0.1;
-        cost_scaling[14] = 0.1;
-        cost_scaling[15] = 0.1;
-        cost_scaling[16] = 0.1;
-        cost_scaling[17] = 0.1;
-        cost_scaling[18] = 0.1;
-        cost_scaling[19] = 0.1;
-        cost_scaling[20] = 0.1;
-        cost_scaling[21] = 0.1;
-        cost_scaling[22] = 0.1;
-        cost_scaling[23] = 0.1;
-        cost_scaling[24] = 0.1;
-        cost_scaling[25] = 0.1;
-        cost_scaling[26] = 0.1;
-        cost_scaling[27] = 0.1;
-        cost_scaling[28] = 0.1;
-        cost_scaling[29] = 0.1;
-        cost_scaling[30] = 0.1;
-        cost_scaling[31] = 0.1;
-        cost_scaling[32] = 0.1;
-        cost_scaling[33] = 0.1;
-        cost_scaling[34] = 0.1;
-        cost_scaling[35] = 0.1;
-        cost_scaling[36] = 0.1;
-        cost_scaling[37] = 0.1;
-        cost_scaling[38] = 0.1;
-        cost_scaling[39] = 0.1;
-        cost_scaling[40] = 0.1;
-        cost_scaling[41] = 0.1;
-        cost_scaling[42] = 0.1;
-        cost_scaling[43] = 0.1;
-        cost_scaling[44] = 0.1;
-        cost_scaling[45] = 0.1;
-        cost_scaling[46] = 0.1;
-        cost_scaling[47] = 0.1;
-        cost_scaling[48] = 0.1;
-        cost_scaling[49] = 0.1;
-        cost_scaling[50] = 1;
+        cost_scaling[0] = 0.05;
+        cost_scaling[1] = 0.05;
+        cost_scaling[2] = 0.05;
+        cost_scaling[3] = 0.05;
+        cost_scaling[4] = 0.05;
+        cost_scaling[5] = 0.05;
+        cost_scaling[6] = 0.05;
+        cost_scaling[7] = 0.05;
+        cost_scaling[8] = 0.05;
+        cost_scaling[9] = 0.05;
+        cost_scaling[10] = 0.05;
+        cost_scaling[11] = 0.05;
+        cost_scaling[12] = 0.05;
+        cost_scaling[13] = 0.05;
+        cost_scaling[14] = 0.05;
+        cost_scaling[15] = 0.05;
+        cost_scaling[16] = 0.05;
+        cost_scaling[17] = 0.05;
+        cost_scaling[18] = 0.05;
+        cost_scaling[19] = 0.05;
+        cost_scaling[20] = 0.05;
+        cost_scaling[21] = 0.05;
+        cost_scaling[22] = 0.05;
+        cost_scaling[23] = 0.05;
+        cost_scaling[24] = 0.05;
+        cost_scaling[25] = 0.05;
+        cost_scaling[26] = 0.05;
+        cost_scaling[27] = 0.05;
+        cost_scaling[28] = 0.05;
+        cost_scaling[29] = 0.05;
+        cost_scaling[30] = 0.05;
+        cost_scaling[31] = 0.05;
+        cost_scaling[32] = 0.05;
+        cost_scaling[33] = 0.05;
+        cost_scaling[34] = 0.05;
+        cost_scaling[35] = 0.05;
+        cost_scaling[36] = 0.05;
+        cost_scaling[37] = 0.05;
+        cost_scaling[38] = 0.05;
+        cost_scaling[39] = 0.05;
+        cost_scaling[40] = 0.05;
+        cost_scaling[41] = 0.05;
+        cost_scaling[42] = 0.05;
+        cost_scaling[43] = 0.05;
+        cost_scaling[44] = 0.05;
+        cost_scaling[45] = 0.05;
+        cost_scaling[46] = 0.05;
+        cost_scaling[47] = 0.05;
+        cost_scaling[48] = 0.05;
+        cost_scaling[49] = 0.05;
+        cost_scaling[50] = 0.05;
+        cost_scaling[51] = 0.05;
+        cost_scaling[52] = 0.05;
+        cost_scaling[53] = 0.05;
+        cost_scaling[54] = 0.05;
+        cost_scaling[55] = 0.05;
+        cost_scaling[56] = 0.05;
+        cost_scaling[57] = 0.05;
+        cost_scaling[58] = 0.05;
+        cost_scaling[59] = 0.05;
+        cost_scaling[60] = 0.05;
+        cost_scaling[61] = 0.05;
+        cost_scaling[62] = 0.05;
+        cost_scaling[63] = 0.05;
+        cost_scaling[64] = 0.05;
+        cost_scaling[65] = 0.05;
+        cost_scaling[66] = 0.05;
+        cost_scaling[67] = 0.05;
+        cost_scaling[68] = 0.05;
+        cost_scaling[69] = 0.05;
+        cost_scaling[70] = 0.05;
+        cost_scaling[71] = 0.05;
+        cost_scaling[72] = 0.05;
+        cost_scaling[73] = 0.05;
+        cost_scaling[74] = 0.05;
+        cost_scaling[75] = 0.05;
+        cost_scaling[76] = 0.05;
+        cost_scaling[77] = 0.05;
+        cost_scaling[78] = 0.05;
+        cost_scaling[79] = 0.05;
+        cost_scaling[80] = 0.05;
+        cost_scaling[81] = 0.05;
+        cost_scaling[82] = 0.05;
+        cost_scaling[83] = 0.05;
+        cost_scaling[84] = 0.05;
+        cost_scaling[85] = 0.05;
+        cost_scaling[86] = 0.05;
+        cost_scaling[87] = 0.05;
+        cost_scaling[88] = 0.05;
+        cost_scaling[89] = 0.05;
+        cost_scaling[90] = 0.05;
+        cost_scaling[91] = 0.05;
+        cost_scaling[92] = 0.05;
+        cost_scaling[93] = 0.05;
+        cost_scaling[94] = 0.05;
+        cost_scaling[95] = 0.05;
+        cost_scaling[96] = 0.05;
+        cost_scaling[97] = 0.05;
+        cost_scaling[98] = 0.05;
+        cost_scaling[99] = 0.05;
+        cost_scaling[100] = 1;
         for (int i = 0; i <= N; i++)
         {
             ocp_nlp_cost_model_set(nlp_config, nlp_dims, nlp_in, i, "scaling", &cost_scaling[i]);
@@ -493,10 +543,10 @@ void frenet_lt_acados_setup_nlp_in(frenet_lt_solver_capsule* capsule, const int 
 
    double* W_0 = calloc(NY0*NY0, sizeof(double));
     // change only the non-zero elements:
-    W_0[0+(NY0) * 0] = 100;
-    W_0[1+(NY0) * 1] = 0.1;
-    W_0[2+(NY0) * 2] = 1;
-    W_0[3+(NY0) * 3] = 10;
+    W_0[0+(NY0) * 0] = 0.000625;
+    W_0[1+(NY0) * 1] = 0.328;
+    W_0[2+(NY0) * 2] = 6.25;
+    W_0[3+(NY0) * 3] = 0.0625;
     ocp_nlp_cost_model_set(nlp_config, nlp_dims, nlp_in, 0, "W", W_0);
     free(W_0);
     double* Vx_0 = calloc(NY0*NX, sizeof(double));
@@ -521,10 +571,10 @@ void frenet_lt_acados_setup_nlp_in(frenet_lt_solver_capsule* capsule, const int 
     free(yref);
     double* W = calloc(NY*NY, sizeof(double));
     // change only the non-zero elements:
-    W[0+(NY) * 0] = 100;
-    W[1+(NY) * 1] = 0.1;
-    W[2+(NY) * 2] = 1;
-    W[3+(NY) * 3] = 10;
+    W[0+(NY) * 0] = 0.000625;
+    W[1+(NY) * 1] = 0.328;
+    W[2+(NY) * 2] = 6.25;
+    W[3+(NY) * 3] = 0.0625;
 
     for (int i = 1; i < N; i++)
     {
@@ -559,9 +609,9 @@ void frenet_lt_acados_setup_nlp_in(frenet_lt_solver_capsule* capsule, const int 
 
     double* W_e = calloc(NYN*NYN, sizeof(double));
     // change only the non-zero elements:
-    W_e[0+(NYN) * 0] = 100;
-    W_e[1+(NYN) * 1] = 0.1;
-    W_e[2+(NYN) * 2] = 1;
+    W_e[0+(NYN) * 0] = 0.000625;
+    W_e[1+(NYN) * 1] = 0.328;
+    W_e[2+(NYN) * 2] = 6.25;
     ocp_nlp_cost_model_set(nlp_config, nlp_dims, nlp_in, N, "W", W_e);
     free(W_e);
     double* Vx_e = calloc(NYN*NX, sizeof(double));
@@ -592,10 +642,10 @@ void frenet_lt_acados_setup_nlp_in(frenet_lt_solver_capsule* capsule, const int 
     // change only the non-zero elements:
     lbx0[0] = -2;
     ubx0[0] = 2;
-    lbx0[1] = -1.5707963267948966;
-    ubx0[1] = 1.5707963267948966;
-    lbx0[2] = -0.1;
-    ubx0[2] = 0.1;
+    lbx0[1] = -0.017453292519943295;
+    ubx0[1] = 0.017453292519943295;
+    lbx0[2] = -0.01;
+    ubx0[2] = 0.01;
 
     ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, 0, "idxbx", idxbx0);
     ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, 0, "lbx", lbx0);
@@ -611,23 +661,6 @@ void frenet_lt_acados_setup_nlp_in(frenet_lt_solver_capsule* capsule, const int 
 
 
     /* constraints that are the same for initial and intermediate */
-    // u
-    int* idxbu = malloc(NBU * sizeof(int));
-    idxbu[0] = 0;
-    double* lubu = calloc(2*NBU, sizeof(double));
-    double* lbu = lubu;
-    double* ubu = lubu + NBU;
-    lbu[0] = -0.5;
-    ubu[0] = 0.5;
-
-    for (int i = 0; i < N; i++)
-    {
-        ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, i, "idxbu", idxbu);
-        ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, i, "lbu", lbu);
-        ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, i, "ubu", ubu);
-    }
-    free(idxbu);
-    free(lubu);
 
 
 
@@ -636,29 +669,6 @@ void frenet_lt_acados_setup_nlp_in(frenet_lt_solver_capsule* capsule, const int 
 
 
 
-    // x
-    int* idxbx = malloc(NBX * sizeof(int));
-    idxbx[0] = 0;
-    idxbx[1] = 1;
-    idxbx[2] = 2;
-    double* lubx = calloc(2*NBX, sizeof(double));
-    double* lbx = lubx;
-    double* ubx = lubx + NBX;
-    lbx[0] = -2;
-    ubx[0] = 2;
-    lbx[1] = -1.5707963267948966;
-    ubx[1] = 1.5707963267948966;
-    lbx[2] = -0.1;
-    ubx[2] = 0.1;
-
-    for (int i = 1; i < N; i++)
-    {
-        ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, i, "idxbx", idxbx);
-        ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, i, "lbx", lbx);
-        ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, i, "ubx", ubx);
-    }
-    free(idxbx);
-    free(lubx);
 
 
 
@@ -668,26 +678,6 @@ void frenet_lt_acados_setup_nlp_in(frenet_lt_solver_capsule* capsule, const int 
 
     /* terminal constraints */
 
-    // set up bounds for last stage
-    // x
-    int* idxbx_e = malloc(NBXN * sizeof(int));
-    idxbx_e[0] = 0;
-    idxbx_e[1] = 1;
-    idxbx_e[2] = 2;
-    double* lubx_e = calloc(2*NBXN, sizeof(double));
-    double* lbx_e = lubx_e;
-    double* ubx_e = lubx_e + NBXN;
-    lbx_e[0] = -2;
-    ubx_e[0] = 2;
-    lbx_e[1] = -1.5707963267948966;
-    ubx_e[1] = 1.5707963267948966;
-    lbx_e[2] = -0.1;
-    ubx_e[2] = 0.1;
-    ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, N, "idxbx", idxbx_e);
-    ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, N, "lbx", lbx_e);
-    ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, N, "ubx", ubx_e);
-    free(idxbx_e);
-    free(lubx_e);
 
 
 
@@ -770,7 +760,7 @@ static void frenet_lt_acados_create_set_opts(frenet_lt_solver_capsule* capsule)
     ocp_nlp_solver_opts_set(nlp_config, nlp_opts, "levenberg_marquardt", &levenberg_marquardt);
 
     /* options QP solver */
-    int qp_solver_cond_N;const int qp_solver_cond_N_ori = 50;
+    int qp_solver_cond_N;const int qp_solver_cond_N_ori = 100;
     qp_solver_cond_N = N < qp_solver_cond_N_ori ? N : qp_solver_cond_N_ori; // use the minimum value here
     ocp_nlp_solver_opts_set(nlp_config, nlp_opts, "qp_cond_N", &qp_solver_cond_N);
 
@@ -836,8 +826,8 @@ void frenet_lt_acados_set_nlp_out(frenet_lt_solver_capsule* capsule)
 
     // initialize with x0
     x0[0] = -2;
-    x0[1] = -1.5707963267948966;
-    x0[2] = -0.1;
+    x0[1] = -0.017453292519943295;
+    x0[2] = -0.01;
 
 
     double* u0 = xu0 + NX;
