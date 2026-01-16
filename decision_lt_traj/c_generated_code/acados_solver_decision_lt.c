@@ -38,86 +38,86 @@
 #include "acados_c/external_function_interface.h"
 
 // example specific
-#include "frenet_lt_model/frenet_lt_model.h"
+#include "decision_lt_model/decision_lt_model.h"
 
 
 
 
 
-#include "acados_solver_frenet_lt.h"
+#include "acados_solver_decision_lt.h"
 
-#define NX     FRENET_LT_NX
-#define NZ     FRENET_LT_NZ
-#define NU     FRENET_LT_NU
-#define NP     FRENET_LT_NP
-#define NP_GLOBAL     FRENET_LT_NP_GLOBAL
-#define NY0    FRENET_LT_NY0
-#define NY     FRENET_LT_NY
-#define NYN    FRENET_LT_NYN
+#define NX     DECISION_LT_NX
+#define NZ     DECISION_LT_NZ
+#define NU     DECISION_LT_NU
+#define NP     DECISION_LT_NP
+#define NP_GLOBAL     DECISION_LT_NP_GLOBAL
+#define NY0    DECISION_LT_NY0
+#define NY     DECISION_LT_NY
+#define NYN    DECISION_LT_NYN
 
-#define NBX    FRENET_LT_NBX
-#define NBX0   FRENET_LT_NBX0
-#define NBU    FRENET_LT_NBU
-#define NG     FRENET_LT_NG
-#define NBXN   FRENET_LT_NBXN
-#define NGN    FRENET_LT_NGN
+#define NBX    DECISION_LT_NBX
+#define NBX0   DECISION_LT_NBX0
+#define NBU    DECISION_LT_NBU
+#define NG     DECISION_LT_NG
+#define NBXN   DECISION_LT_NBXN
+#define NGN    DECISION_LT_NGN
 
-#define NH     FRENET_LT_NH
-#define NHN    FRENET_LT_NHN
-#define NH0    FRENET_LT_NH0
-#define NPHI   FRENET_LT_NPHI
-#define NPHIN  FRENET_LT_NPHIN
-#define NPHI0  FRENET_LT_NPHI0
-#define NR     FRENET_LT_NR
+#define NH     DECISION_LT_NH
+#define NHN    DECISION_LT_NHN
+#define NH0    DECISION_LT_NH0
+#define NPHI   DECISION_LT_NPHI
+#define NPHIN  DECISION_LT_NPHIN
+#define NPHI0  DECISION_LT_NPHI0
+#define NR     DECISION_LT_NR
 
-#define NS     FRENET_LT_NS
-#define NS0    FRENET_LT_NS0
-#define NSN    FRENET_LT_NSN
+#define NS     DECISION_LT_NS
+#define NS0    DECISION_LT_NS0
+#define NSN    DECISION_LT_NSN
 
-#define NSBX   FRENET_LT_NSBX
-#define NSBU   FRENET_LT_NSBU
-#define NSH0   FRENET_LT_NSH0
-#define NSH    FRENET_LT_NSH
-#define NSHN   FRENET_LT_NSHN
-#define NSG    FRENET_LT_NSG
-#define NSPHI0 FRENET_LT_NSPHI0
-#define NSPHI  FRENET_LT_NSPHI
-#define NSPHIN FRENET_LT_NSPHIN
-#define NSGN   FRENET_LT_NSGN
-#define NSBXN  FRENET_LT_NSBXN
+#define NSBX   DECISION_LT_NSBX
+#define NSBU   DECISION_LT_NSBU
+#define NSH0   DECISION_LT_NSH0
+#define NSH    DECISION_LT_NSH
+#define NSHN   DECISION_LT_NSHN
+#define NSG    DECISION_LT_NSG
+#define NSPHI0 DECISION_LT_NSPHI0
+#define NSPHI  DECISION_LT_NSPHI
+#define NSPHIN DECISION_LT_NSPHIN
+#define NSGN   DECISION_LT_NSGN
+#define NSBXN  DECISION_LT_NSBXN
 
 
 
 // ** solver data **
 
-frenet_lt_solver_capsule * frenet_lt_acados_create_capsule(void)
+decision_lt_solver_capsule * decision_lt_acados_create_capsule(void)
 {
-    void* capsule_mem = malloc(sizeof(frenet_lt_solver_capsule));
-    frenet_lt_solver_capsule *capsule = (frenet_lt_solver_capsule *) capsule_mem;
+    void* capsule_mem = malloc(sizeof(decision_lt_solver_capsule));
+    decision_lt_solver_capsule *capsule = (decision_lt_solver_capsule *) capsule_mem;
 
     return capsule;
 }
 
 
-int frenet_lt_acados_free_capsule(frenet_lt_solver_capsule *capsule)
+int decision_lt_acados_free_capsule(decision_lt_solver_capsule *capsule)
 {
     free(capsule);
     return 0;
 }
 
 
-int frenet_lt_acados_create(frenet_lt_solver_capsule* capsule)
+int decision_lt_acados_create(decision_lt_solver_capsule* capsule)
 {
-    int N_shooting_intervals = FRENET_LT_N;
+    int N_shooting_intervals = DECISION_LT_N;
     double* new_time_steps = NULL; // NULL -> don't alter the code generated time-steps
-    return frenet_lt_acados_create_with_discretization(capsule, N_shooting_intervals, new_time_steps);
+    return decision_lt_acados_create_with_discretization(capsule, N_shooting_intervals, new_time_steps);
 }
 
 
-int frenet_lt_acados_update_time_steps(frenet_lt_solver_capsule* capsule, int N, double* new_time_steps)
+int decision_lt_acados_update_time_steps(decision_lt_solver_capsule* capsule, int N, double* new_time_steps)
 {
     if (N != capsule->nlp_solver_plan->N) {
-        fprintf(stderr, "frenet_lt_acados_update_time_steps: given number of time steps (= %d) " \
+        fprintf(stderr, "decision_lt_acados_update_time_steps: given number of time steps (= %d) " \
             "differs from the currently allocated number of " \
             "time steps (= %d)!\n" \
             "Please recreate with new discretization and provide a new vector of time_stamps!\n",
@@ -138,9 +138,9 @@ int frenet_lt_acados_update_time_steps(frenet_lt_solver_capsule* capsule, int N,
 }
 
 /**
- * Internal function for frenet_lt_acados_create: step 1
+ * Internal function for decision_lt_acados_create: step 1
  */
-void frenet_lt_acados_create_set_plan(ocp_nlp_plan_t* nlp_solver_plan, const int N)
+void decision_lt_acados_create_set_plan(ocp_nlp_plan_t* nlp_solver_plan, const int N)
 {
     assert(N == nlp_solver_plan->N);
 
@@ -178,7 +178,7 @@ void frenet_lt_acados_create_set_plan(ocp_nlp_plan_t* nlp_solver_plan, const int
 }
 
 
-static ocp_nlp_dims* frenet_lt_acados_create_setup_dimensions(frenet_lt_solver_capsule* capsule)
+static ocp_nlp_dims* decision_lt_acados_create_setup_dimensions(decision_lt_solver_capsule* capsule)
 {
     ocp_nlp_plan_t* nlp_solver_plan = capsule->nlp_solver_plan;
     const int N = nlp_solver_plan->N;
@@ -310,9 +310,9 @@ static ocp_nlp_dims* frenet_lt_acados_create_setup_dimensions(frenet_lt_solver_c
 
 
 /**
- * Internal function for frenet_lt_acados_create: step 3
+ * Internal function for decision_lt_acados_create: step 3
  */
-void frenet_lt_acados_create_setup_functions(frenet_lt_solver_capsule* capsule)
+void decision_lt_acados_create_setup_functions(decision_lt_solver_capsule* capsule)
 {
     const int N = capsule->nlp_solver_plan->N;
 
@@ -342,17 +342,17 @@ void frenet_lt_acados_create_setup_functions(frenet_lt_solver_capsule* capsule)
     // explicit ode
     capsule->expl_vde_forw = (external_function_external_param_casadi *) malloc(sizeof(external_function_external_param_casadi)*N);
     for (int i = 0; i < N; i++) {
-        MAP_CASADI_FNC(expl_vde_forw[i], frenet_lt_expl_vde_forw);
+        MAP_CASADI_FNC(expl_vde_forw[i], decision_lt_expl_vde_forw);
     }
 
     capsule->expl_ode_fun = (external_function_external_param_casadi *) malloc(sizeof(external_function_external_param_casadi)*N);
     for (int i = 0; i < N; i++) {
-        MAP_CASADI_FNC(expl_ode_fun[i], frenet_lt_expl_ode_fun);
+        MAP_CASADI_FNC(expl_ode_fun[i], decision_lt_expl_ode_fun);
     }
 
     capsule->expl_vde_adj = (external_function_external_param_casadi *) malloc(sizeof(external_function_external_param_casadi)*N);
     for (int i = 0; i < N; i++) {
-        MAP_CASADI_FNC(expl_vde_adj[i], frenet_lt_expl_vde_adj);
+        MAP_CASADI_FNC(expl_vde_adj[i], decision_lt_expl_vde_adj);
     }
 
 
@@ -362,9 +362,9 @@ void frenet_lt_acados_create_setup_functions(frenet_lt_solver_capsule* capsule)
 
 
 /**
- * Internal function for frenet_lt_acados_create: step 4
+ * Internal function for decision_lt_acados_create: step 4
  */
-void frenet_lt_acados_create_set_default_parameters(frenet_lt_solver_capsule* capsule)
+void decision_lt_acados_create_set_default_parameters(decision_lt_solver_capsule* capsule)
 {
 
     const int N = capsule->nlp_solver_plan->N;
@@ -374,7 +374,7 @@ void frenet_lt_acados_create_set_default_parameters(frenet_lt_solver_capsule* ca
     p[1] = 0.01;
 
     for (int i = 0; i <= N; i++) {
-        frenet_lt_acados_update_params(capsule, i, p, NP);
+        decision_lt_acados_update_params(capsule, i, p, NP);
     }
     free(p);
 
@@ -384,9 +384,9 @@ void frenet_lt_acados_create_set_default_parameters(frenet_lt_solver_capsule* ca
 
 
 /**
- * Internal function for frenet_lt_acados_create: step 5
+ * Internal function for decision_lt_acados_create: step 5
  */
-void frenet_lt_acados_setup_nlp_in(frenet_lt_solver_capsule* capsule, const int N, double* new_time_steps)
+void decision_lt_acados_setup_nlp_in(decision_lt_solver_capsule* capsule, const int N, double* new_time_steps)
 {
     assert(N == capsule->nlp_solver_plan->N);
     ocp_nlp_config* nlp_config = capsule->nlp_config;
@@ -406,7 +406,7 @@ void frenet_lt_acados_setup_nlp_in(frenet_lt_solver_capsule* capsule, const int 
     if (new_time_steps)
     {
         // NOTE: this sets scaling and time_steps
-        frenet_lt_acados_update_time_steps(capsule, N, new_time_steps);
+        decision_lt_acados_update_time_steps(capsule, N, new_time_steps);
     }
     else
     {
@@ -458,17 +458,7 @@ void frenet_lt_acados_setup_nlp_in(frenet_lt_solver_capsule* capsule, const int 
         cost_scaling[37] = 0.1;
         cost_scaling[38] = 0.1;
         cost_scaling[39] = 0.1;
-        cost_scaling[40] = 0.1;
-        cost_scaling[41] = 0.1;
-        cost_scaling[42] = 0.1;
-        cost_scaling[43] = 0.1;
-        cost_scaling[44] = 0.1;
-        cost_scaling[45] = 0.1;
-        cost_scaling[46] = 0.1;
-        cost_scaling[47] = 0.1;
-        cost_scaling[48] = 0.1;
-        cost_scaling[49] = 0.1;
-        cost_scaling[50] = 1;
+        cost_scaling[40] = 1;
         for (int i = 0; i <= N; i++)
         {
             ocp_nlp_cost_model_set(nlp_config, nlp_dims, nlp_in, i, "scaling", &cost_scaling[i]);
@@ -493,22 +483,19 @@ void frenet_lt_acados_setup_nlp_in(frenet_lt_solver_capsule* capsule, const int 
 
    double* W_0 = calloc(NY0*NY0, sizeof(double));
     // change only the non-zero elements:
-    W_0[0+(NY0) * 0] = 0.000625;
-    W_0[1+(NY0) * 1] = 0.328;
-    W_0[2+(NY0) * 2] = 6.25;
-    W_0[3+(NY0) * 3] = 0.0625;
+    W_0[0+(NY0) * 0] = 20;
+    W_0[2+(NY0) * 2] = 5;
     ocp_nlp_cost_model_set(nlp_config, nlp_dims, nlp_in, 0, "W", W_0);
     free(W_0);
     double* Vx_0 = calloc(NY0*NX, sizeof(double));
     // change only the non-zero elements:
     Vx_0[0+(NY0) * 0] = 1;
     Vx_0[1+(NY0) * 1] = 1;
-    Vx_0[2+(NY0) * 2] = 1;
     ocp_nlp_cost_model_set(nlp_config, nlp_dims, nlp_in, 0, "Vx", Vx_0);
     free(Vx_0);
     double* Vu_0 = calloc(NY0*NU, sizeof(double));
     // change only the non-zero elements:
-    Vu_0[3+(NY0) * 0] = 1;
+    Vu_0[2+(NY0) * 0] = 1;
     ocp_nlp_cost_model_set(nlp_config, nlp_dims, nlp_in, 0, "Vu", Vu_0);
     free(Vu_0);
     double* yref = calloc(NY, sizeof(double));
@@ -521,10 +508,8 @@ void frenet_lt_acados_setup_nlp_in(frenet_lt_solver_capsule* capsule, const int 
     free(yref);
     double* W = calloc(NY*NY, sizeof(double));
     // change only the non-zero elements:
-    W[0+(NY) * 0] = 0.000625;
-    W[1+(NY) * 1] = 0.328;
-    W[2+(NY) * 2] = 6.25;
-    W[3+(NY) * 3] = 0.0625;
+    W[0+(NY) * 0] = 20;
+    W[2+(NY) * 2] = 5;
 
     for (int i = 1; i < N; i++)
     {
@@ -535,7 +520,6 @@ void frenet_lt_acados_setup_nlp_in(frenet_lt_solver_capsule* capsule, const int 
     // change only the non-zero elements:
     Vx[0+(NY) * 0] = 1;
     Vx[1+(NY) * 1] = 1;
-    Vx[2+(NY) * 2] = 1;
     for (int i = 1; i < N; i++)
     {
         ocp_nlp_cost_model_set(nlp_config, nlp_dims, nlp_in, i, "Vx", Vx);
@@ -545,7 +529,7 @@ void frenet_lt_acados_setup_nlp_in(frenet_lt_solver_capsule* capsule, const int 
     
     double* Vu = calloc(NY*NU, sizeof(double));
     // change only the non-zero elements:
-    Vu[3+(NY) * 0] = 1;
+    Vu[2+(NY) * 0] = 1;
 
     for (int i = 1; i < N; i++)
     {
@@ -559,16 +543,13 @@ void frenet_lt_acados_setup_nlp_in(frenet_lt_solver_capsule* capsule, const int 
 
     double* W_e = calloc(NYN*NYN, sizeof(double));
     // change only the non-zero elements:
-    W_e[0+(NYN) * 0] = 0.000625;
-    W_e[1+(NYN) * 1] = 0.328;
-    W_e[2+(NYN) * 2] = 6.25;
+    W_e[0+(NYN) * 0] = 20;
     ocp_nlp_cost_model_set(nlp_config, nlp_dims, nlp_in, N, "W", W_e);
     free(W_e);
     double* Vx_e = calloc(NYN*NX, sizeof(double));
     // change only the non-zero elements:
     Vx_e[0+(NYN) * 0] = 1;
     Vx_e[1+(NYN) * 1] = 1;
-    Vx_e[2+(NYN) * 2] = 1;
     ocp_nlp_cost_model_set(nlp_config, nlp_dims, nlp_in, N, "Vx", Vx_e);
     free(Vx_e);
 
@@ -584,7 +565,6 @@ void frenet_lt_acados_setup_nlp_in(frenet_lt_solver_capsule* capsule, const int 
     int* idxbx0 = malloc(NBX0 * sizeof(int));
     idxbx0[0] = 0;
     idxbx0[1] = 1;
-    idxbx0[2] = 2;
 
     double* lubx0 = calloc(2*NBX0, sizeof(double));
     double* lbx0 = lubx0;
@@ -594,8 +574,6 @@ void frenet_lt_acados_setup_nlp_in(frenet_lt_solver_capsule* capsule, const int 
     ubx0[0] = 2;
     lbx0[1] = -0.017453292519943295;
     ubx0[1] = 0.017453292519943295;
-    lbx0[2] = -0.01;
-    ubx0[2] = 0.01;
 
     ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, 0, "idxbx", idxbx0);
     ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, 0, "lbx", lbx0);
@@ -643,7 +621,7 @@ void frenet_lt_acados_setup_nlp_in(frenet_lt_solver_capsule* capsule, const int 
 }
 
 
-static void frenet_lt_acados_create_set_opts(frenet_lt_solver_capsule* capsule)
+static void decision_lt_acados_create_set_opts(decision_lt_solver_capsule* capsule)
 {
     const int N = capsule->nlp_solver_plan->N;
     ocp_nlp_config* nlp_config = capsule->nlp_config;
@@ -710,7 +688,7 @@ static void frenet_lt_acados_create_set_opts(frenet_lt_solver_capsule* capsule)
     ocp_nlp_solver_opts_set(nlp_config, nlp_opts, "levenberg_marquardt", &levenberg_marquardt);
 
     /* options QP solver */
-    int qp_solver_cond_N;const int qp_solver_cond_N_ori = 50;
+    int qp_solver_cond_N;const int qp_solver_cond_N_ori = 40;
     qp_solver_cond_N = N < qp_solver_cond_N_ori ? N : qp_solver_cond_N_ori; // use the minimum value here
     ocp_nlp_solver_opts_set(nlp_config, nlp_opts, "qp_cond_N", &qp_solver_cond_N);
 
@@ -761,9 +739,9 @@ static void frenet_lt_acados_create_set_opts(frenet_lt_solver_capsule* capsule)
 
 
 /**
- * Internal function for frenet_lt_acados_create: step 7
+ * Internal function for decision_lt_acados_create: step 7
  */
-void frenet_lt_acados_set_nlp_out(frenet_lt_solver_capsule* capsule)
+void decision_lt_acados_set_nlp_out(decision_lt_solver_capsule* capsule)
 {
     const int N = capsule->nlp_solver_plan->N;
     ocp_nlp_config* nlp_config = capsule->nlp_config;
@@ -777,7 +755,6 @@ void frenet_lt_acados_set_nlp_out(frenet_lt_solver_capsule* capsule)
     // initialize with x0
     x0[0] = -2;
     x0[1] = -0.017453292519943295;
-    x0[2] = -0.01;
 
 
     double* u0 = xu0 + NX;
@@ -795,9 +772,9 @@ void frenet_lt_acados_set_nlp_out(frenet_lt_solver_capsule* capsule)
 
 
 /**
- * Internal function for frenet_lt_acados_create: step 9
+ * Internal function for decision_lt_acados_create: step 9
  */
-int frenet_lt_acados_create_precompute(frenet_lt_solver_capsule* capsule) {
+int decision_lt_acados_create_precompute(decision_lt_solver_capsule* capsule) {
     int status = ocp_nlp_precompute(capsule->nlp_solver, capsule->nlp_in, capsule->nlp_out);
 
     if (status != ACADOS_SUCCESS) {
@@ -809,14 +786,14 @@ int frenet_lt_acados_create_precompute(frenet_lt_solver_capsule* capsule) {
 }
 
 
-int frenet_lt_acados_create_with_discretization(frenet_lt_solver_capsule* capsule, int N, double* new_time_steps)
+int decision_lt_acados_create_with_discretization(decision_lt_solver_capsule* capsule, int N, double* new_time_steps)
 {
     // If N does not match the number of shooting intervals used for code generation, new_time_steps must be given.
-    if (N != FRENET_LT_N && !new_time_steps) {
-        fprintf(stderr, "frenet_lt_acados_create_with_discretization: new_time_steps is NULL " \
+    if (N != DECISION_LT_N && !new_time_steps) {
+        fprintf(stderr, "decision_lt_acados_create_with_discretization: new_time_steps is NULL " \
             "but the number of shooting intervals (= %d) differs from the number of " \
             "shooting intervals (= %d) during code generation! Please provide a new vector of time_stamps!\n", \
-             N, FRENET_LT_N);
+             N, DECISION_LT_N);
         return 1;
     }
 
@@ -825,23 +802,23 @@ int frenet_lt_acados_create_with_discretization(frenet_lt_solver_capsule* capsul
 
     // 1) create and set nlp_solver_plan; create nlp_config
     capsule->nlp_solver_plan = ocp_nlp_plan_create(N);
-    frenet_lt_acados_create_set_plan(capsule->nlp_solver_plan, N);
+    decision_lt_acados_create_set_plan(capsule->nlp_solver_plan, N);
     capsule->nlp_config = ocp_nlp_config_create(*capsule->nlp_solver_plan);
 
     // 2) create and set dimensions
-    capsule->nlp_dims = frenet_lt_acados_create_setup_dimensions(capsule);
+    capsule->nlp_dims = decision_lt_acados_create_setup_dimensions(capsule);
 
     // 3) create and set nlp_opts
     capsule->nlp_opts = ocp_nlp_solver_opts_create(capsule->nlp_config, capsule->nlp_dims);
-    frenet_lt_acados_create_set_opts(capsule);
+    decision_lt_acados_create_set_opts(capsule);
 
     // 4) create nlp_in
     capsule->nlp_in = ocp_nlp_in_create(capsule->nlp_config, capsule->nlp_dims);
 
     // 5) setup functions, nlp_in and default parameters
-    frenet_lt_acados_create_setup_functions(capsule);
-    frenet_lt_acados_setup_nlp_in(capsule, N, new_time_steps);
-    frenet_lt_acados_create_set_default_parameters(capsule);
+    decision_lt_acados_create_setup_functions(capsule);
+    decision_lt_acados_setup_nlp_in(capsule, N, new_time_steps);
+    decision_lt_acados_create_set_default_parameters(capsule);
 
     // 6) create solver
     capsule->nlp_solver = ocp_nlp_solver_create(capsule->nlp_config, capsule->nlp_dims, capsule->nlp_opts, capsule->nlp_in);
@@ -851,10 +828,10 @@ int frenet_lt_acados_create_with_discretization(frenet_lt_solver_capsule* capsul
     capsule->nlp_out = ocp_nlp_out_create(capsule->nlp_config, capsule->nlp_dims);
     // 7.2) sens_out
     capsule->sens_out = ocp_nlp_out_create(capsule->nlp_config, capsule->nlp_dims);
-    frenet_lt_acados_set_nlp_out(capsule);
+    decision_lt_acados_set_nlp_out(capsule);
 
     // 8) do precomputations
-    int status = frenet_lt_acados_create_precompute(capsule);
+    int status = decision_lt_acados_create_precompute(capsule);
 
     return status;
 }
@@ -862,7 +839,7 @@ int frenet_lt_acados_create_with_discretization(frenet_lt_solver_capsule* capsul
 /**
  * This function is for updating an already initialized solver with a different number of qp_cond_N. It is useful for code reuse after code export.
  */
-int frenet_lt_acados_update_qp_solver_cond_N(frenet_lt_solver_capsule* capsule, int qp_solver_cond_N)
+int decision_lt_acados_update_qp_solver_cond_N(decision_lt_solver_capsule* capsule, int qp_solver_cond_N)
 {
     // 1) destroy solver
     ocp_nlp_solver_destroy(capsule->nlp_solver);
@@ -873,17 +850,17 @@ int frenet_lt_acados_update_qp_solver_cond_N(frenet_lt_solver_capsule* capsule, 
         printf("Warning: qp_solver_cond_N = %d > N = %d\n", qp_solver_cond_N, N);
     ocp_nlp_solver_opts_set(capsule->nlp_config, capsule->nlp_opts, "qp_cond_N", &qp_solver_cond_N);
 
-    // 3) continue with the remaining steps from frenet_lt_acados_create_with_discretization(...):
+    // 3) continue with the remaining steps from decision_lt_acados_create_with_discretization(...):
     // -> 8) create solver
     capsule->nlp_solver = ocp_nlp_solver_create(capsule->nlp_config, capsule->nlp_dims, capsule->nlp_opts, capsule->nlp_in);
 
     // -> 9) do precomputations
-    int status = frenet_lt_acados_create_precompute(capsule);
+    int status = decision_lt_acados_create_precompute(capsule);
     return status;
 }
 
 
-int frenet_lt_acados_reset(frenet_lt_solver_capsule* capsule, int reset_qp_solver_mem)
+int decision_lt_acados_reset(decision_lt_solver_capsule* capsule, int reset_qp_solver_mem)
 {
 
     // set initialization to all zeros
@@ -926,7 +903,7 @@ int frenet_lt_acados_reset(frenet_lt_solver_capsule* capsule, int reset_qp_solve
 
 
 
-int frenet_lt_acados_update_params(frenet_lt_solver_capsule* capsule, int stage, double *p, int np)
+int decision_lt_acados_update_params(decision_lt_solver_capsule* capsule, int stage, double *p, int np)
 {
     int solver_status = 0;
 
@@ -942,7 +919,7 @@ int frenet_lt_acados_update_params(frenet_lt_solver_capsule* capsule, int stage,
 }
 
 
-int frenet_lt_acados_update_params_sparse(frenet_lt_solver_capsule * capsule, int stage, int *idx, double *p, int n_update)
+int decision_lt_acados_update_params_sparse(decision_lt_solver_capsule * capsule, int stage, int *idx, double *p, int n_update)
 {
     ocp_nlp_in_set_params_sparse(capsule->nlp_config, capsule->nlp_dims, capsule->nlp_in, stage, idx, p, n_update);
 
@@ -950,17 +927,17 @@ int frenet_lt_acados_update_params_sparse(frenet_lt_solver_capsule * capsule, in
 }
 
 
-int frenet_lt_acados_set_p_global_and_precompute_dependencies(frenet_lt_solver_capsule* capsule, double* data, int data_len)
+int decision_lt_acados_set_p_global_and_precompute_dependencies(decision_lt_solver_capsule* capsule, double* data, int data_len)
 {
 
-    printf("No global_data, frenet_lt_acados_set_p_global_and_precompute_dependencies does nothing.\n");
+    printf("No global_data, decision_lt_acados_set_p_global_and_precompute_dependencies does nothing.\n");
     return 0;
 }
 
 
 
 
-int frenet_lt_acados_solve(frenet_lt_solver_capsule* capsule)
+int decision_lt_acados_solve(decision_lt_solver_capsule* capsule)
 {
     // solve NLP
     int solver_status = ocp_nlp_solve(capsule->nlp_solver, capsule->nlp_in, capsule->nlp_out);
@@ -970,7 +947,7 @@ int frenet_lt_acados_solve(frenet_lt_solver_capsule* capsule)
 
 
 
-int frenet_lt_acados_setup_qp_matrices_and_factorize(frenet_lt_solver_capsule* capsule)
+int decision_lt_acados_setup_qp_matrices_and_factorize(decision_lt_solver_capsule* capsule)
 {
     int solver_status = ocp_nlp_setup_qp_matrices_and_factorize(capsule->nlp_solver, capsule->nlp_in, capsule->nlp_out);
 
@@ -979,7 +956,7 @@ int frenet_lt_acados_setup_qp_matrices_and_factorize(frenet_lt_solver_capsule* c
 
 
 
-void frenet_lt_acados_batch_solve(frenet_lt_solver_capsule ** capsules, int * status_out, int N_batch)
+void decision_lt_acados_batch_solve(decision_lt_solver_capsule ** capsules, int * status_out, int N_batch)
 {
 
     for (int i = 0; i < N_batch; i++)
@@ -992,7 +969,7 @@ void frenet_lt_acados_batch_solve(frenet_lt_solver_capsule ** capsules, int * st
 }
 
 
-void frenet_lt_acados_batch_setup_qp_matrices_and_factorize(frenet_lt_solver_capsule ** capsules, int * status_out, int N_batch)
+void decision_lt_acados_batch_setup_qp_matrices_and_factorize(decision_lt_solver_capsule ** capsules, int * status_out, int N_batch)
 {
 
     for (int i = 0; i < N_batch; i++)
@@ -1005,7 +982,7 @@ void frenet_lt_acados_batch_setup_qp_matrices_and_factorize(frenet_lt_solver_cap
 }
 
 
-void frenet_lt_acados_batch_eval_params_jac(frenet_lt_solver_capsule ** capsules, int N_batch)
+void decision_lt_acados_batch_eval_params_jac(decision_lt_solver_capsule ** capsules, int N_batch)
 {
 
     for (int i = 0; i < N_batch; i++)
@@ -1019,7 +996,7 @@ void frenet_lt_acados_batch_eval_params_jac(frenet_lt_solver_capsule ** capsules
 
 
 
-void frenet_lt_acados_batch_eval_solution_sens_adj_p(frenet_lt_solver_capsule ** capsules, const char *field, int stage, double *out, int offset, int N_batch)
+void decision_lt_acados_batch_eval_solution_sens_adj_p(decision_lt_solver_capsule ** capsules, const char *field, int stage, double *out, int offset, int N_batch)
 {
 
 
@@ -1033,7 +1010,7 @@ void frenet_lt_acados_batch_eval_solution_sens_adj_p(frenet_lt_solver_capsule **
 }
 
 
-void frenet_lt_acados_batch_set_flat(frenet_lt_solver_capsule ** capsules, const char *field, double *data, int N_data, int N_batch)
+void decision_lt_acados_batch_set_flat(decision_lt_solver_capsule ** capsules, const char *field, double *data, int N_data, int N_batch)
 {
     int offset = ocp_nlp_dims_get_total_from_attr(capsules[0]->nlp_solver->config, capsules[0]->nlp_solver->dims, capsules[0]->nlp_out, field);
 
@@ -1055,7 +1032,7 @@ void frenet_lt_acados_batch_set_flat(frenet_lt_solver_capsule ** capsules, const
 
 
 
-void frenet_lt_acados_batch_get_flat(frenet_lt_solver_capsule ** capsules, const char *field, double *data, int N_data, int N_batch)
+void decision_lt_acados_batch_get_flat(decision_lt_solver_capsule ** capsules, const char *field, double *data, int N_data, int N_batch)
 {
     int offset = ocp_nlp_dims_get_total_from_attr(capsules[0]->nlp_solver->config, capsules[0]->nlp_solver->dims, capsules[0]->nlp_out, field);
 
@@ -1076,7 +1053,7 @@ void frenet_lt_acados_batch_get_flat(frenet_lt_solver_capsule ** capsules, const
 }
 
 
-int frenet_lt_acados_free(frenet_lt_solver_capsule* capsule)
+int decision_lt_acados_free(decision_lt_solver_capsule* capsule)
 {
     // before destroying, keep some info
     const int N = capsule->nlp_solver_plan->N;
@@ -1112,7 +1089,7 @@ int frenet_lt_acados_free(frenet_lt_solver_capsule* capsule)
 }
 
 
-void frenet_lt_acados_print_stats(frenet_lt_solver_capsule* capsule)
+void decision_lt_acados_print_stats(decision_lt_solver_capsule* capsule)
 {
     int nlp_iter, stat_m, stat_n, tmp_int;
     ocp_nlp_get(capsule->nlp_solver, "nlp_iter", &nlp_iter);
@@ -1138,7 +1115,7 @@ void frenet_lt_acados_print_stats(frenet_lt_solver_capsule* capsule)
     }
 }
 
-int frenet_lt_acados_custom_update(frenet_lt_solver_capsule* capsule, double* data, int data_len)
+int decision_lt_acados_custom_update(decision_lt_solver_capsule* capsule, double* data, int data_len)
 {
     (void)capsule;
     (void)data;
@@ -1151,11 +1128,11 @@ int frenet_lt_acados_custom_update(frenet_lt_solver_capsule* capsule, double* da
 
 
 
-ocp_nlp_in *frenet_lt_acados_get_nlp_in(frenet_lt_solver_capsule* capsule) { return capsule->nlp_in; }
-ocp_nlp_out *frenet_lt_acados_get_nlp_out(frenet_lt_solver_capsule* capsule) { return capsule->nlp_out; }
-ocp_nlp_out *frenet_lt_acados_get_sens_out(frenet_lt_solver_capsule* capsule) { return capsule->sens_out; }
-ocp_nlp_solver *frenet_lt_acados_get_nlp_solver(frenet_lt_solver_capsule* capsule) { return capsule->nlp_solver; }
-ocp_nlp_config *frenet_lt_acados_get_nlp_config(frenet_lt_solver_capsule* capsule) { return capsule->nlp_config; }
-void *frenet_lt_acados_get_nlp_opts(frenet_lt_solver_capsule* capsule) { return capsule->nlp_opts; }
-ocp_nlp_dims *frenet_lt_acados_get_nlp_dims(frenet_lt_solver_capsule* capsule) { return capsule->nlp_dims; }
-ocp_nlp_plan_t *frenet_lt_acados_get_nlp_plan(frenet_lt_solver_capsule* capsule) { return capsule->nlp_solver_plan; }
+ocp_nlp_in *decision_lt_acados_get_nlp_in(decision_lt_solver_capsule* capsule) { return capsule->nlp_in; }
+ocp_nlp_out *decision_lt_acados_get_nlp_out(decision_lt_solver_capsule* capsule) { return capsule->nlp_out; }
+ocp_nlp_out *decision_lt_acados_get_sens_out(decision_lt_solver_capsule* capsule) { return capsule->sens_out; }
+ocp_nlp_solver *decision_lt_acados_get_nlp_solver(decision_lt_solver_capsule* capsule) { return capsule->nlp_solver; }
+ocp_nlp_config *decision_lt_acados_get_nlp_config(decision_lt_solver_capsule* capsule) { return capsule->nlp_config; }
+void *decision_lt_acados_get_nlp_opts(decision_lt_solver_capsule* capsule) { return capsule->nlp_opts; }
+ocp_nlp_dims *decision_lt_acados_get_nlp_dims(decision_lt_solver_capsule* capsule) { return capsule->nlp_dims; }
+ocp_nlp_plan_t *decision_lt_acados_get_nlp_plan(decision_lt_solver_capsule* capsule) { return capsule->nlp_solver_plan; }

@@ -35,17 +35,14 @@ logger.setLevel(logging.DEBUG)
 
 THETA_UPPER_BOUND = 1.0*np.pi/180.0
 KAPPA_UPPER_BOUND = 0.01
-DKAPPA_UPPER_BOUND = 0.1
 L_UPPER_BOUND = 2.0
 
 THETA_LOWER_BOUND = -THETA_UPPER_BOUND
 KAPPA_LOWER_BOUND = -KAPPA_UPPER_BOUND
-DKAPPA_LOWER_BOUND = -DKAPPA_UPPER_BOUND
 L_LOWER_BOUND = -L_UPPER_BOUND
 
 L_INIT = 0.0
 THETA_INIT = 0.0
-KAPPA_INIT = 0.0
 
 VEL = 1.0
 DELTA_VEL = 0.0
@@ -58,38 +55,40 @@ ADD_BOUND_CONSTRAINT = False
 USE_STATE_REF = True
 
 #Bryson's rule for the initial guess
-L_COEF = 0.000625
-DTHETA_COEF = 0.328
-K_COEF = 6.25
-DK_COEF = 0.0625
+# L_COEF = 0.000625
+# DTHETA_COEF = 0.328
+# K_COEF = 6.25
 
+L_COEF = 20.0
+DTHETA_COEF = 0.0
+K_COEF = 5.0
 
 def export_simple_frenet_model():
-    model_name = "frenet_lt"
+    model_name = "decision_lt"
+    # State variables: l (lateral deviation), delta_theta (heading angle deviation)
     l = ca.SX.sym("l")
     delta_theta = ca.SX.sym("delta_theta")
-    k = ca.SX.sym("k")
-    x = ca.vertcat(l, delta_theta, k)
+    x = ca.vertcat(l, delta_theta)
 
-    # control
-    dk = ca.SX.sym("dk")
-    u = ca.vertcat(dk)
+    # Control variable: kappa (curvature)
+    kappa = ca.SX.sym("kappa")
+    u = ca.vertcat(kappa)
 
-    # state
+    # State derivatives
     l_dot = ca.SX.sym("l_dot")
     delta_theta_dot = ca.SX.sym("delta_theta_dot")
-    k_dot = ca.SX.sym("k_dot")
-    xdot = ca.vertcat(l_dot, delta_theta_dot, k_dot)
+    xdot = ca.vertcat(l_dot, delta_theta_dot)
 
+    # Parameters: vel (velocity), kr (reference curvature)
     vel = ca.SX.sym("vel")
     kr = ca.SX.sym("kr")
-
     p = ca.vertcat(vel, kr)
 
-    f_expl = ca.vertcat(vel*delta_theta,
-                        vel*(k-kr),
-                        dk)
+    # Dynamics: l_dot = vel * delta_theta, delta_theta_dot = vel * (kappa - kr)
+    f_expl = ca.vertcat(vel * delta_theta,
+                        vel * (kappa - kr))
     f_impl = xdot - f_expl
+    
     model = AcadosModel()
     model.f_impl_expr = f_impl
     model.f_expl_expr = f_expl
@@ -162,20 +161,17 @@ def set_acados_model(stage_n, tf):
     safe_mkdir_recursive(os.path.join(os.getcwd(), acados_models_dir))
     acados_source_path = os.environ["ACADOS_SOURCE_DIR"]
     sys.path.insert(0, acados_source_path)
-    # default state boundaries
-
-    dk_lower = -0.5
-    dk_upper = 0.5
 
     ocp = AcadosOcp()
     model = export_simple_frenet_model()
     ocp.model = model
 
     # set the dimension of the problem
+    # State: [l, delta_theta], Control: [kappa]
     ocp.dims.N = stage_n
-    ocp.dims.nx = ocp.model.x.size()[0]
-    ocp.dims.nu = ocp.model.u.size()[0]
-    ocp.dims.ny = ocp.dims.nx + ocp.dims.nu
+    ocp.dims.nx = ocp.model.x.size()[0]  # 2
+    ocp.dims.nu = ocp.model.u.size()[0]  # 1
+    ocp.dims.ny = ocp.dims.nx + ocp.dims.nu  # 3
     ocp.dims.ny_e = 0  # not set for now
     ocp.dims.nbx = ocp.dims.nx  # number of state bounds
     ocp.dims.nbu = ocp.dims.nu  # number of control bounds
@@ -188,15 +184,17 @@ def set_acados_model(stage_n, tf):
     l_coeff = L_COEF
     dtheta_coeff = DTHETA_COEF
     k_coeff = K_COEF
-    dk_coeff = DK_COEF
+    
     # cost functions and weights setting
     ocp.cost.cost_type = "LINEAR_LS"  # cost type, default format
+    # Q for states [l, delta_theta]
     Q = np.eye(ocp.dims.nx)
     Q[0, 0] = l_coeff
     Q[1, 1] = dtheta_coeff
-    Q[2, 2] = k_coeff
+    # R for control [kappa]
     R = np.eye(ocp.dims.nu)
-    R[0, 0] = dk_coeff
+    R[0, 0] = k_coeff
+    
     # set the cost function form
     Vx = np.zeros((ocp.dims.ny, ocp.dims.nx))
     Vx[:ocp.dims.nx, :ocp.dims.nx] = np.eye(ocp.dims.nx)
@@ -231,50 +229,49 @@ def set_acados_model(stage_n, tf):
         C = np.zeros((ocp.dims.ny, ocp.dims.nx))
         C[:ocp.dims.nx, :ocp.dims.nx] = np.eye(ocp.dims.nx)
         D = np.zeros((ocp.dims.ny, ocp.dims.nu))
-        # in reality, these variables change according to the referenceline
         D[ocp.dims.ny - 1, 0] = 1
         ocp.constraints.D = D
         ocp.constraints.C = C
         ocp.constraints.lg = np.array(
-            [L_LOWER_BOUND, THETA_LOWER_BOUND, KAPPA_LOWER_BOUND, DKAPPA_LOWER_BOUND])
+            [L_LOWER_BOUND, THETA_LOWER_BOUND, KAPPA_LOWER_BOUND])
         ocp.constraints.ug = np.array(
-            [L_UPPER_BOUND, THETA_UPPER_BOUND, KAPPA_UPPER_BOUND, DKAPPA_UPPER_BOUND])
+            [L_UPPER_BOUND, THETA_UPPER_BOUND, KAPPA_UPPER_BOUND])
 
         ocp.constraints.C_e = np.eye(ocp.dims.nx)
         ocp.constraints.lg_e = np.array(
-            [L_LOWER_BOUND, THETA_LOWER_BOUND, KAPPA_LOWER_BOUND])
+            [L_LOWER_BOUND, THETA_LOWER_BOUND])
         ocp.constraints.ug_e = np.array(
-            [L_UPPER_BOUND, THETA_UPPER_BOUND, KAPPA_UPPER_BOUND])
+            [L_UPPER_BOUND, THETA_UPPER_BOUND])
 
     # ocp.constraints.lsg = np.array([1.0])
     if ADD_INIT_CONSTRAINT:
         ocp.constraints.lbx_0 = np.array(
-            [L_LOWER_BOUND, THETA_LOWER_BOUND, KAPPA_LOWER_BOUND])
+            [L_LOWER_BOUND, THETA_LOWER_BOUND])
         ocp.constraints.ubx_0 = np.array(
-            [L_UPPER_BOUND, THETA_UPPER_BOUND, KAPPA_UPPER_BOUND])
-        ocp.constraints.idxbx_0 = np.array([0, 1, 2])
+            [L_UPPER_BOUND, THETA_UPPER_BOUND])
+        ocp.constraints.idxbx_0 = np.array([0, 1])
     # state constraints
     if ADD_BOUND_CONSTRAINT:
         ocp.constraints.lbx_0 = np.array(
-            [L_LOWER_BOUND, THETA_LOWER_BOUND, KAPPA_LOWER_BOUND])
+            [L_LOWER_BOUND, THETA_LOWER_BOUND])
         ocp.constraints.ubx_0 = np.array(
-            [L_UPPER_BOUND, THETA_UPPER_BOUND, KAPPA_UPPER_BOUND])
-        ocp.constraints.idxbx_0 = np.array([0, 1, 2])
+            [L_UPPER_BOUND, THETA_UPPER_BOUND])
+        ocp.constraints.idxbx_0 = np.array([0, 1])
 
         ocp.constraints.lbx = np.array(
-            [L_LOWER_BOUND, THETA_LOWER_BOUND, KAPPA_LOWER_BOUND])
+            [L_LOWER_BOUND, THETA_LOWER_BOUND])
         ocp.constraints.ubx = np.array(
-            [L_UPPER_BOUND, THETA_UPPER_BOUND, KAPPA_UPPER_BOUND])
-        ocp.constraints.idxbx = np.array([0, 1, 2])
+            [L_UPPER_BOUND, THETA_UPPER_BOUND])
+        ocp.constraints.idxbx = np.array([0, 1])
 
         ocp.constraints.lbx_e = np.array(
-            [L_LOWER_BOUND, THETA_LOWER_BOUND, KAPPA_LOWER_BOUND])
+            [L_LOWER_BOUND, THETA_LOWER_BOUND])
         ocp.constraints.ubx_e = np.array(
-            [L_UPPER_BOUND, THETA_UPPER_BOUND, KAPPA_UPPER_BOUND])
-        ocp.constraints.idxbx_e = np.array([0, 1, 2])
-        # control bounds
-        ocp.constraints.lbu = np.array([dk_lower])
-        ocp.constraints.ubu = np.array([dk_upper])
+            [L_UPPER_BOUND, THETA_UPPER_BOUND])
+        ocp.constraints.idxbx_e = np.array([0, 1])
+        # control bounds (kappa)
+        ocp.constraints.lbu = np.array([KAPPA_LOWER_BOUND])
+        ocp.constraints.ubu = np.array([KAPPA_UPPER_BOUND])
         ocp.constraints.idxbu = np.array([0])
 
     # ocp.constraints.x0 = np.array([0, 0, 0])
@@ -301,26 +298,39 @@ def set_acados_model(stage_n, tf):
     return acados_solver, integrator
 
 def get_reference(N):
-
+    """
+    Generate reference trajectory for the OCP solver
+    State: [l, delta_theta], Control: [kappa]
+    
+    Args:
+        N: Number of control intervals
+    
+    Returns:
+        y_ref: List of reference vectors for stages 0 to N-1, shape (ny,) = (3,)
+        y_ref_e: Terminal reference vector for stage N, shape (nx,) = (2,)
+    """
     y_ref = []
     for i in range(N):
-        ref = np.zeros(4)  # [l, delta_theta, k, dk]
-        if i<N*0.2:
-            ref[0] = 0.0
-        elif i<N*0.6:
+        ref = np.zeros(3)  # [l, delta_theta, kappa]
+        if i < N*0.2:
+            ref[0] = 3.0
+        elif i < N*0.6:
             ref[0] = 3.0
         else:
-            ref[0] = 0.0
+            ref[0] = 3.0
         # ref[1] = 0.0  # delta_theta_ref = 0.0
-        # ref[2] = 0.0  # k_ref = 0.0
-        # ref[3] = 0.0  # dk_ref = 0.0
+        # ref[2] = 0.0  # kappa_ref = 0.0
         y_ref.append(ref)
     
-    y_ref_e = np.zeros(3)  # [l, delta_theta, k]
-    y_ref_e[0] = 0.0
+    y_ref_e = np.zeros(2)  # [l, delta_theta]
+    y_ref_e[0] = 3.0
     return y_ref, y_ref_e
 
 def get_bounds():
+    """
+    Get bounds for states and controls
+    State: [l, delta_theta], Control: [kappa]
+    """
     x_ub = []
     x_lb = []
     u_ub = []
@@ -329,43 +339,29 @@ def get_bounds():
     xu_ub = []
     for i in range(0, N+1):
         if i == 0:
-            x_lb.append(np.array(
-                [L_INIT, THETA_INIT, KAPPA_INIT]))
-            x_ub.append(np.array(
-                [L_INIT, THETA_INIT, KAPPA_INIT]))
-            u_lb.append(np.array([DKAPPA_LOWER_BOUND]))
-            u_ub.append(np.array([DKAPPA_UPPER_BOUND]))
-            xu_lb.append(
-                np.array([L_INIT, THETA_INIT, KAPPA_INIT, DKAPPA_LOWER_BOUND]))
-            xu_ub.append(
-                np.array([L_INIT, THETA_INIT, KAPPA_INIT, DKAPPA_UPPER_BOUND]))
+            x_lb.append(np.array([L_INIT, THETA_INIT]))
+            x_ub.append(np.array([L_INIT, THETA_INIT]))
+            u_lb.append(np.array([KAPPA_LOWER_BOUND]))
+            u_ub.append(np.array([KAPPA_UPPER_BOUND]))
+            xu_lb.append(np.array([L_INIT, THETA_INIT, KAPPA_LOWER_BOUND]))
+            xu_ub.append(np.array([L_INIT, THETA_INIT, KAPPA_UPPER_BOUND]))
         elif i < N*0.8:
-            x_lb.append(np.array(
-                [L_LOWER_BOUND, THETA_LOWER_BOUND, KAPPA_LOWER_BOUND]))
-            x_ub.append(np.array(
-                [L_UPPER_BOUND, THETA_UPPER_BOUND, KAPPA_UPPER_BOUND]))
-            u_lb.append(np.array([DKAPPA_LOWER_BOUND]))
-            u_ub.append(np.array([DKAPPA_UPPER_BOUND]))
-            xu_lb.append(np.array(
-                [L_LOWER_BOUND, THETA_LOWER_BOUND, KAPPA_LOWER_BOUND, DKAPPA_LOWER_BOUND]))
-            xu_ub.append(np.array(
-                [L_UPPER_BOUND, THETA_UPPER_BOUND, KAPPA_UPPER_BOUND, DKAPPA_UPPER_BOUND]))
+            x_lb.append(np.array([L_LOWER_BOUND, THETA_LOWER_BOUND]))
+            x_ub.append(np.array([L_UPPER_BOUND, THETA_UPPER_BOUND]))
+            u_lb.append(np.array([KAPPA_LOWER_BOUND]))
+            u_ub.append(np.array([KAPPA_UPPER_BOUND]))
+            xu_lb.append(np.array([L_LOWER_BOUND, THETA_LOWER_BOUND, KAPPA_LOWER_BOUND]))
+            xu_ub.append(np.array([L_UPPER_BOUND, THETA_UPPER_BOUND, KAPPA_UPPER_BOUND]))
         elif i < N:
-            x_lb.append(np.array(
-                [NEW_L_BOUND, THETA_LOWER_BOUND, KAPPA_LOWER_BOUND]))
-            x_ub.append(np.array(
-                [L_UPPER_BOUND, THETA_UPPER_BOUND, KAPPA_UPPER_BOUND]))
-            u_lb.append(np.array([DKAPPA_LOWER_BOUND]))
-            u_ub.append(np.array([DKAPPA_UPPER_BOUND]))
-            xu_lb.append(np.array(
-                [NEW_L_BOUND, THETA_LOWER_BOUND, KAPPA_LOWER_BOUND, DKAPPA_LOWER_BOUND]))
-            xu_ub.append(np.array(
-                [L_UPPER_BOUND, THETA_UPPER_BOUND, KAPPA_UPPER_BOUND, DKAPPA_UPPER_BOUND]))
+            x_lb.append(np.array([NEW_L_BOUND, THETA_LOWER_BOUND]))
+            x_ub.append(np.array([L_UPPER_BOUND, THETA_UPPER_BOUND]))
+            u_lb.append(np.array([KAPPA_LOWER_BOUND]))
+            u_ub.append(np.array([KAPPA_UPPER_BOUND]))
+            xu_lb.append(np.array([NEW_L_BOUND, THETA_LOWER_BOUND, KAPPA_LOWER_BOUND]))
+            xu_ub.append(np.array([L_UPPER_BOUND, THETA_UPPER_BOUND, KAPPA_UPPER_BOUND]))
         else:
-            x_lb.append(np.array(
-                [NEW_L_BOUND, THETA_LOWER_BOUND, KAPPA_LOWER_BOUND]))
-            x_ub.append(np.array(
-                [L_UPPER_BOUND, THETA_UPPER_BOUND, KAPPA_UPPER_BOUND]))
+            x_lb.append(np.array([NEW_L_BOUND, THETA_LOWER_BOUND]))
+            x_ub.append(np.array([L_UPPER_BOUND, THETA_UPPER_BOUND]))
     return x_lb, x_ub, u_lb, u_ub, xu_lb, xu_ub
 
 
@@ -374,16 +370,16 @@ def plot_acados_results(x, u, x_lb, x_ub, u_lb, u_ub, N, tf, y_ref=None, y_ref_e
     Plot the results from Acados solver including states and control with bounds
 
     Args:
-        x: List of state vectors [l, theta, kappa] for each time step
-        u: List of control vectors [dkappa] for each time step
+        x: List of state vectors [l, delta_theta] for each time step
+        u: List of control vectors [kappa] for each time step
         x_lb: List of lower bounds for states
         x_ub: List of upper bounds for states
         u_lb: List of lower bounds for controls
         u_ub: List of upper bounds for controls
         N: Number of control intervals
         tf: Final time
-        y_ref: List of reference vectors for stages 0 to N-1, shape (ny,) = (4,)
-        y_ref_e: Terminal reference vector for stage N, shape (nx,) = (3,)
+        y_ref: List of reference vectors for stages 0 to N-1, shape (ny,) = (3,)
+        y_ref_e: Terminal reference vector for stage N, shape (nx,) = (2,)
     """
     # Convert lists to numpy arrays
     x = np.array(x)
@@ -395,13 +391,12 @@ def plot_acados_results(x, u, x_lb, x_ub, u_lb, u_ub, N, tf, y_ref=None, y_ref_e
 
     # Process reference values if provided
     if y_ref is not None and y_ref_e is not None:
-        y_ref_arr = np.array(y_ref)  # shape: (N, 4)
-        y_ref_e_arr = np.array(y_ref_e)  # shape: (3,)
+        y_ref_arr = np.array(y_ref)  # shape: (N, 3)
+        y_ref_e_arr = np.array(y_ref_e)  # shape: (2,)
         # Build full reference arrays for all N+1 time steps
         l_ref = np.concatenate([y_ref_arr[:, 0], [y_ref_e_arr[0]]])
         dtheta_ref = np.concatenate([y_ref_arr[:, 1], [y_ref_e_arr[1]]])
-        kappa_ref = np.concatenate([y_ref_arr[:, 2], [y_ref_e_arr[2]]])
-        dk_ref = y_ref_arr[:, 3]  # only N steps for control
+        kappa_ref = y_ref_arr[:, 2]  # only N steps for control
         has_ref = True
     else:
         has_ref = False
@@ -410,10 +405,10 @@ def plot_acados_results(x, u, x_lb, x_ub, u_lb, u_ub, N, tf, y_ref=None, y_ref_e
     t_x = np.linspace(0, tf, N+1)  # Time for states
     t_u = np.linspace(0, tf, N)    # Time for controls
 
-    plt.figure(figsize=(12, 10))
+    plt.figure(figsize=(12, 8))
 
     # Plot lateral deviation (l)
-    plt.subplot(4, 1, 1)
+    plt.subplot(3, 1, 1)
     plt.plot(t_x, x[:, 0], 'b-', linewidth=2, label='l')
     if has_ref:
         plt.step(t_x, l_ref, 'm-', linewidth=1.5, where='post', label='l_ref')
@@ -425,43 +420,30 @@ def plot_acados_results(x, u, x_lb, x_ub, u_lb, u_ub, N, tf, y_ref=None, y_ref_e
     plt.legend()
     plt.grid(True)
 
-    # Plot heading angle (theta)
-    plt.subplot(4, 1, 2)
+    # Plot heading angle (delta_theta)
+    plt.subplot(3, 1, 2)
     plt.plot(t_x, x[:, 1], 'b-', linewidth=2, label='delta_theta')
     if has_ref:
         plt.step(t_x, dtheta_ref, 'm-', linewidth=1.5, where='post', label='delta_theta_ref')
     if ADD_BOUND_CONSTRAINT:
         plt.plot(t_x, x_lb[:, 1], 'r--', label='theta lower bound')
         plt.plot(t_x, x_ub[:, 1], 'g--', label='theta upper bound')
-    plt.ylabel('theta (rad)')
-    plt.title('Heading Angle')
+    plt.ylabel('delta_theta (rad)')
+    plt.title('Heading Angle Deviation')
     plt.legend()
     plt.grid(True)
 
-    # Plot curvature (kappa)
-    plt.subplot(4, 1, 3)
-    plt.plot(t_x, x[:, 2], 'b-', linewidth=2, label='kappa')
+    # Plot curvature (kappa) - control input
+    plt.subplot(3, 1, 3)
+    plt.step(t_u, u[:, 0], 'b-', linewidth=2, where='post', label='kappa')
     if has_ref:
-        plt.step(t_x, kappa_ref, 'm-', linewidth=1.5, where='post', label='kappa_ref')
+        plt.step(t_u, kappa_ref, 'm-', linewidth=1.5, where='post', label='kappa_ref')
     if ADD_BOUND_CONSTRAINT:
-        plt.plot(t_x, x_lb[:, 2], 'r--', label='kappa lower bound')
-        plt.plot(t_x, x_ub[:, 2], 'g--', label='kappa upper bound')
-    plt.ylabel('kappa (1/m)')
-    plt.title('Curvature')
-    plt.legend()
-    plt.grid(True)
-
-    # Plot curvature rate (dkappa)
-    plt.subplot(4, 1, 4)
-    plt.step(t_u, u[:, 0], 'b-', linewidth=2, where='post', label='dkappa')
-    if has_ref:
-        plt.step(t_u, dk_ref, 'm-', linewidth=1.5, where='post', label='dk_ref')
-    if ADD_BOUND_CONSTRAINT:
-        plt.plot(t_u, u_lb[:, 0], 'r--', label='dkappa lower bound')
-        plt.plot(t_u, u_ub[:, 0], 'g--', label='dkappa upper bound')
+        plt.plot(t_u, u_lb[:, 0], 'r--', label='kappa lower bound')
+        plt.plot(t_u, u_ub[:, 0], 'g--', label='kappa upper bound')
     plt.xlabel('Time (s)')
-    plt.ylabel('dkappa (1/m^2)')
-    plt.title('Curvature Rate')
+    plt.ylabel('kappa (1/m)')
+    plt.title('Curvature (Control)')
     plt.legend()
     plt.grid(True)
 
@@ -473,12 +455,12 @@ def visualize_in_cartesian(x, u, N, tf, vel, kr):
     Visualize the reference line and vehicle trajectory in Cartesian coordinates
 
     Args:
-        x: List of state vectors [l, theta, kappa] for each time step
-        u: List of control vectors [dkappa] for each time step
+        x: List of state vectors [l, delta_theta] for each time step
+        u: List of control vectors [kappa] for each time step
         N: Number of control intervals
         tf: Final time
-        vel: Vehicle velocity (constant)
-        kr: Reference line curvature
+        vel: Vehicle velocity list
+        kr: Reference line curvature list
     """
     # Convert lists to numpy arrays
     x = np.array(x)
@@ -486,6 +468,7 @@ def visualize_in_cartesian(x, u, N, tf, vel, kr):
 
     # Time vectors
     t_x = np.linspace(0, tf, N+1)  # Time for states
+    t_u = np.linspace(0, tf, N)    # Time for controls
     dt = tf/N  # Time step
 
     # Initialize arrays for reference line and vehicle trajectory
@@ -504,7 +487,7 @@ def visualize_in_cartesian(x, u, N, tf, vel, kr):
 
     veh_x[0] = 0
     veh_y[0] = x[0, 0]  # Initial lateral offset
-    veh_theta[0] = x[0, 1]  # Initial heading angle
+    veh_theta[0] = x[0, 1]  # Initial heading angle deviation
 
     # Simulate reference line and vehicle trajectory
     for i in range(1, N+1):
@@ -513,11 +496,10 @@ def visualize_in_cartesian(x, u, N, tf, vel, kr):
         ref_x[i] = ref_x[i-1] + vel[i-1] * np.cos(ref_theta[i-1]) * dt
         ref_y[i] = ref_y[i-1] + vel[i-1] * np.sin(ref_theta[i-1]) * dt
 
-        # Vehicle dynamics
-        kappa = x[i-1, 2]
-        delta_theta = x[i-1, 1]
-
-        # Update vehicle heading (theta = ref_theta + delta_theta)
+        # Vehicle dynamics - kappa is now control u[i-1, 0]
+        kappa = u[i-1, 0] if i-1 < N else u[-1, 0]
+        
+        # Update vehicle heading
         veh_theta[i] = veh_theta[i-1] + vel[i-1] * kappa * dt
 
         # Update vehicle position (Frenet to Cartesian)
@@ -540,7 +522,7 @@ def visualize_in_cartesian(x, u, N, tf, vel, kr):
     plt.plot(veh_x[-1], veh_y[-1], 'rs', markersize=8, label='Veh end')
 
     # Add arrows to show direction
-    arrow_interval = N//10  # Show 10 arrows along the path
+    arrow_interval = max(1, N//10)  # Show ~10 arrows along the path
     for i in range(0, N+1, arrow_interval):
         plt.arrow(ref_x[i], ref_y[i],
                   0.5*np.cos(ref_theta[i]), 0.5*np.sin(ref_theta[i]),
@@ -558,8 +540,8 @@ def visualize_in_cartesian(x, u, N, tf, vel, kr):
 
     # Plot curvature comparison
     plt.figure(figsize=(12, 4))
-    plt.plot(t_x, x[:, 2], 'r-', label='Vehicle curvature (kappa)')
-    plt.plot(t_x, kr, 'b-', label='Reference curvature (kappa)')
+    plt.step(t_u, u[:, 0], 'r-', where='post', label='Vehicle curvature (kappa)')
+    plt.plot(t_x, kr, 'b-', label='Reference curvature (kr)')
 
     plt.xlabel('Time (s)')
     plt.ylabel('Curvature (1/m)')
@@ -573,12 +555,13 @@ def visualize_in_cartesian(x, u, N, tf, vel, kr):
 if __name__ == "__main__":
 
     matplotlib.set_loglevel("warning")
-    N = 50
+    N = 40
     # N = 250
-    tf = 5.0
+    tf = 4.0
     acados_solver, sim_solver = set_acados_model(N, tf)
-    xx = np.array([0.1, 0.1, 0.01])
-    uu = np.array([0.1])
+    # Test simulation: state [l, delta_theta], control [kappa]
+    xx = np.array([0.1, 0.01])
+    uu = np.array([0.005])
     sim_solver.set('T', 0.1)
     xx_next = sim_solver.simulate(x=xx, u=uu, z=None, xdot=None, p=None)
     print(f"xx_next: {xx_next}")
@@ -588,7 +571,7 @@ if __name__ == "__main__":
 
     x_lb, x_ub, u_lb, u_ub, xu_lb, xu_ub = get_bounds()
     y_ref, y_ref_e = get_reference(N)
-    x0 = np.array([L_INIT, THETA_INIT, KAPPA_INIT])
+    x0 = np.array([L_INIT, THETA_INIT])
 
     params = [np.array([VEL+i*DELTA_VEL*tf/N, KR+i*DELTA_KR*tf/N]) for i in range(0, N+1)]
 

@@ -1,7 +1,7 @@
 {
     "acados_include_path": "/home/wangjunyang/acados/include",
     "acados_lib_path": "/home/wangjunyang/acados/lib",
-    "code_export_directory": "/home/wangjunyang/ACADOS_Example/frenet_lt_traj/c_generated_code",
+    "code_export_directory": "/home/wangjunyang/ACADOS_Example/decision_lt_traj/c_generated_code",
     "constraints": {
         "C": [],
         "C_e": [],
@@ -14,8 +14,7 @@
         "idxbx": [],
         "idxbx_0": [
             0,
-            1,
-            2
+            1
         ],
         "idxbx_e": [],
         "idxbxe_0": [],
@@ -34,8 +33,7 @@
         "lbx": [],
         "lbx_0": [
             -2.0,
-            -0.017453292519943295,
-            -0.01
+            -0.017453292519943295
         ],
         "lbx_e": [],
         "lg": [],
@@ -61,8 +59,7 @@
         "ubx": [],
         "ubx_0": [
             2.0,
-            0.017453292519943295,
-            0.01
+            0.017453292519943295
         ],
         "ubx_e": [],
         "ug": [],
@@ -94,16 +91,10 @@
                 0.0
             ],
             [
-                0.0
-            ],
-            [
                 1.0
             ]
         ],
         "Vu_0": [
-            [
-                0.0
-            ],
             [
                 0.0
             ],
@@ -117,21 +108,13 @@
         "Vx": [
             [
                 1.0,
-                0.0,
                 0.0
             ],
             [
-                0.0,
-                1.0,
-                0.0
-            ],
-            [
-                0.0,
                 0.0,
                 1.0
             ],
             [
-                0.0,
                 0.0,
                 0.0
             ]
@@ -139,21 +122,13 @@
         "Vx_0": [
             [
                 1.0,
-                0.0,
                 0.0
             ],
             [
-                0.0,
-                1.0,
-                0.0
-            ],
-            [
-                0.0,
                 0.0,
                 1.0
             ],
             [
-                0.0,
                 0.0,
                 0.0
             ]
@@ -161,16 +136,9 @@
         "Vx_e": [
             [
                 1.0,
-                0.0,
                 0.0
             ],
             [
-                0.0,
-                1.0,
-                0.0
-            ],
-            [
-                0.0,
                 0.0,
                 1.0
             ]
@@ -179,71 +147,46 @@
         "Vz_0": [],
         "W": [
             [
-                0.000625,
-                0.0,
-                0.0,
-                0.0
-            ],
-            [
-                0.0,
-                0.328,
+                20.0,
                 0.0,
                 0.0
             ],
             [
                 0.0,
                 0.0,
-                6.25,
                 0.0
             ],
             [
                 0.0,
                 0.0,
-                0.0,
-                0.0625
+                5.0
             ]
         ],
         "W_0": [
             [
-                0.000625,
-                0.0,
-                0.0,
-                0.0
-            ],
-            [
-                0.0,
-                0.328,
+                20.0,
                 0.0,
                 0.0
             ],
             [
                 0.0,
                 0.0,
-                6.25,
                 0.0
             ],
             [
                 0.0,
                 0.0,
-                0.0,
-                0.0625
+                5.0
             ]
         ],
         "W_e": [
             [
-                0.000625,
-                0.0,
+                20.0,
                 0.0
             ],
             [
                 0.0,
-                0.328,
                 0.0
-            ],
-            [
-                0.0,
-                0.0,
-                6.25
             ]
         ],
         "Zl": [],
@@ -267,17 +210,14 @@
         "yref": [
             0.0,
             0.0,
-            0.0,
             0.0
         ],
         "yref_0": [
             0.0,
             0.0,
-            0.0,
             0.0
         ],
         "yref_e": [
-            0.0,
             0.0,
             0.0
         ],
@@ -293,11 +233,11 @@
         "/home/wangjunyang/anaconda3/envs/py3.8/include/python3.8"
     ],
     "dims": {
-        "N": 50,
+        "N": 40,
         "n_global_data": 0,
         "nbu": 0,
         "nbx": 0,
-        "nbx_0": 3,
+        "nbx_0": 2,
         "nbx_e": 0,
         "nbxe_0": 0,
         "ng": 0,
@@ -328,20 +268,20 @@
         "nsphi_0": 0,
         "nsphi_e": 0,
         "nu": 1,
-        "nx": 3,
-        "nx_next": 3,
-        "ny": 4,
-        "ny_0": 4,
-        "ny_e": 3,
+        "nx": 2,
+        "nx_next": 2,
+        "ny": 3,
+        "ny_0": 3,
+        "ny_e": 2,
         "nz": 0
     },
     "external_function_files_model": [
-        "frenet_lt_model/frenet_lt_expl_ode_fun.c",
-        "frenet_lt_model/frenet_lt_expl_vde_forw.c",
-        "frenet_lt_model/frenet_lt_expl_vde_adj.c"
+        "decision_lt_model/decision_lt_expl_ode_fun.c",
+        "decision_lt_model/decision_lt_expl_vde_forw.c",
+        "decision_lt_model/decision_lt_expl_vde_adj.c"
     ],
     "external_function_files_ocp": [],
-    "json_file": "./frenet_lt_acados_ocp.json",
+    "json_file": "./decision_lt_acados_ocp.json",
     "model": {
         "con_h_expr": [],
         "con_h_expr_0": [],
@@ -382,25 +322,25 @@
         "dyn_impl_dae_fun": null,
         "dyn_impl_dae_fun_jac": null,
         "dyn_impl_dae_jac": null,
-        "f_expl_expr": "jhpnnagiieahaaaadaaaaaaaaaaaaaaaaaeghaaaaaaaaaaaaaaadaaaaaaaaaaaaaaabaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaadaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabaaaaaaaaaaaaaaacaaaaaaaaaaaaaaadaaaaaaaaaaaaaaaegdaaaaaaaaaaaaaaaegpcaaaaaaaaaaaaaadaaaaaaaghfgmgegpcaaaaaaaaaaaaaalaaaaaaaegfgmgehbgpfehigfgehbgegdaaaaaaaaaaaaaaachbaaaaaaaaaaaaaaaegcaaaaaaaaaaaaaaaegpcaaaaaaaaaaaaaabaaaaaaalgegpcaaaaaaaaaaaaaacaaaaaaalgchegpcaaaaaaaaaaaaaacaaaaaaaeglg",
-        "f_impl_expr": "jhpnnagiieahaaaadaaaaaaaaaaaaaaaaaeghaaaaaaaaaaaaaaadaaaaaaaaaaaaaaabaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaadaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabaaaaaaaaaaaaaaacaaaaaaaaaaaaaaadaaaaaaaaaaaaaaaegcaaaaaaaaaaaaaaaegpcaaaaaaaaaaaaaafaaaaaaamgpfegpgehegdaaaaaaaaaaaaaaaegpcaaaaaaaaaaaaaadaaaaaaaghfgmgegpcaaaaaaaaaaaaaalaaaaaaaegfgmgehbgpfehigfgehbgegcaaaaaaaaaaaaaaaegpcaaaaaaaaaaaaaapaaaaaaaegfgmgehbgpfehigfgehbgpfegpgehegdaaaaaaaaaaaaaaachcaaaaaaaaaaaaaaaegcaaaaaaaaaaaaaaaegpcaaaaaaaaaaaaaabaaaaaaalgegpcaaaaaaaaaaaaaacaaaaaaalgchegcaaaaaaaaaaaaaaaegpcaaaaaaaaaaaaaafaaaaaaalgpfegpgehegpcaaaaaaaaaaaaaacaaaaaaaeglg",
+        "f_expl_expr": "jhpnnagiieahaaaadaaaaaaaaaaaaaaaaaeggaaaaaaaaaaaaaaacaaaaaaaaaaaaaaabaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaacaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabaaaaaaaaaaaaaaacaaaaaaaaaaaaaaaegdaaaaaaaaaaaaaaaegpcaaaaaaaaaaaaaadaaaaaaaghfgmgegpcaaaaaaaaaaaaaalaaaaaaaegfgmgehbgpfehigfgehbgegdaaaaaaaaaaaaaaachbaaaaaaaaaaaaaaaegcaaaaaaaaaaaaaaaegpcaaaaaaaaaaaaaafaaaaaaalgbgahahbgegpcaaaaaaaaaaaaaacaaaaaaalgch",
+        "f_impl_expr": "jhpnnagiieahaaaadaaaaaaaaaaaaaaaaaeggaaaaaaaaaaaaaaacaaaaaaaaaaaaaaabaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaacaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabaaaaaaaaaaaaaaacaaaaaaaaaaaaaaaegcaaaaaaaaaaaaaaaegpcaaaaaaaaaaaaaafaaaaaaamgpfegpgehegdaaaaaaaaaaaaaaaegpcaaaaaaaaaaaaaadaaaaaaaghfgmgegpcaaaaaaaaaaaaaalaaaaaaaegfgmgehbgpfehigfgehbgegcaaaaaaaaaaaaaaaegpcaaaaaaaaaaaaaapaaaaaaaegfgmgehbgpfehigfgehbgpfegpgehegdaaaaaaaaaaaaaaachcaaaaaaaaaaaaaaaegcaaaaaaaaaaaaaaaegpcaaaaaaaaaaaaaafaaaaaaalgbgahahbgegpcaaaaaaaaaaaaaacaaaaaaalgch",
         "gnsf_nontrivial_f_LO": 1,
         "gnsf_purely_linear": 0,
-        "name": "frenet_lt",
+        "name": "decision_lt",
         "nu_original": null,
         "p": "jhpnnagiieahaaaadaaaaaaaaaaaaaaaaaeggaaaaaaaaaaaaaaacaaaaaaaaaaaaaaabaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaacaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabaaaaaaaaaaaaaaacaaaaaaaaaaaaaaaegpcaaaaaaaaaaaaaadaaaaaaaghfgmgegpcaaaaaaaaaaaaaacaaaaaaalgch",
         "p_global": "jhpnnagiieahaaaadaaaaaaaaaaaaaaaaaegeaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "t": [],
         "t0": null,
         "t_label": "t",
-        "u": "jhpnnagiieahaaaadaaaaaaaaaaaaaaaaaegfaaaaaaaaaaaaaaabaaaaaaaaaaaaaaabaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabaaaaaaaaaaaaaaaegpcaaaaaaaaaaaaaacaaaaaaaeglg",
+        "u": "jhpnnagiieahaaaadaaaaaaaaaaaaaaaaaegfaaaaaaaaaaaaaaabaaaaaaaaaaaaaaabaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabaaaaaaaaaaaaaaaegpcaaaaaaaaaaaaaafaaaaaaalgbgahahbg",
         "u_labels": null,
-        "x": "jhpnnagiieahaaaadaaaaaaaaaaaaaaaaaeghaaaaaaaaaaaaaaadaaaaaaaaaaaaaaabaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaadaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabaaaaaaaaaaaaaaacaaaaaaaaaaaaaaadaaaaaaaaaaaaaaaegpcaaaaaaaaaaaaaabaaaaaaamgegpcaaaaaaaaaaaaaalaaaaaaaegfgmgehbgpfehigfgehbgegpcaaaaaaaaaaaaaabaaaaaaalg",
+        "x": "jhpnnagiieahaaaadaaaaaaaaaaaaaaaaaeggaaaaaaaaaaaaaaacaaaaaaaaaaaaaaabaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaacaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabaaaaaaaaaaaaaaacaaaaaaaaaaaaaaaegpcaaaaaaaaaaaaaabaaaaaaamgegpcaaaaaaaaaaaaaalaaaaaaaegfgmgehbgpfehigfgehbg",
         "x_labels": null,
-        "xdot": "jhpnnagiieahaaaadaaaaaaaaaaaaaaaaaeghaaaaaaaaaaaaaaadaaaaaaaaaaaaaaabaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaadaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabaaaaaaaaaaaaaaacaaaaaaaaaaaaaaadaaaaaaaaaaaaaaaegpcaaaaaaaaaaaaaafaaaaaaamgpfegpgehegpcaaaaaaaaaaaaaapaaaaaaaegfgmgehbgpfehigfgehbgpfegpgehegpcaaaaaaaaaaaaaafaaaaaaalgpfegpgeh",
+        "xdot": "jhpnnagiieahaaaadaaaaaaaaaaaaaaaaaeggaaaaaaaaaaaaaaacaaaaaaaaaaaaaaabaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaacaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabaaaaaaaaaaaaaaacaaaaaaaaaaaaaaaegpcaaaaaaaaaaaaaafaaaaaaamgpfegpgehegpcaaaaaaaaaaaaaapaaaaaaaegfgmgehbgpfehigfgehbgpfegpgeh",
         "z": "jhpnnagiieahaaaadaaaaaaaaaaaaaaaaaegeaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
     },
-    "name": "frenet_lt",
+    "name": "decision_lt",
     "p_global_values": [],
     "parameter_values": [
         10.0,
@@ -410,7 +350,7 @@
     "shared_lib_ext": ".so",
     "simulink_opts": null,
     "solver_options": {
-        "N_horizon": 50,
+        "N_horizon": 40,
         "Tsim": 0.1,
         "adaptive_levenberg_marquardt_lam": 5.0,
         "adaptive_levenberg_marquardt_mu0": 0.001,
@@ -420,16 +360,6 @@
         "collocation_type": "GAUSS_LEGENDRE",
         "cost_discretization": "EULER",
         "cost_scaling": [
-            0.1,
-            0.1,
-            0.1,
-            0.1,
-            0.1,
-            0.1,
-            0.1,
-            0.1,
-            0.1,
-            0.1,
             0.1,
             0.1,
             0.1,
@@ -518,7 +448,7 @@
         "num_threads_in_batch_solve": 1,
         "print_level": 0,
         "qp_solver": "PARTIAL_CONDENSING_HPIPM",
-        "qp_solver_cond_N": 50,
+        "qp_solver_cond_N": 40,
         "qp_solver_cond_block_size": null,
         "qp_solver_cond_ric_alg": 1,
         "qp_solver_iter_max": 50,
@@ -575,29 +505,9 @@
             3.700000000000002,
             3.800000000000002,
             3.900000000000002,
-            4.000000000000002,
-            4.100000000000001,
-            4.200000000000001,
-            4.300000000000001,
-            4.4,
-            4.5,
-            4.6,
-            4.699999999999999,
-            4.799999999999999,
-            4.899999999999999,
-            4.999999999999998
+            4.000000000000002
         ],
         "sim_method_jac_reuse": [
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
             0,
             0,
             0,
@@ -681,29 +591,9 @@
             1,
             1,
             1,
-            1,
-            1,
-            1,
-            1,
-            1,
-            1,
-            1,
-            1,
-            1,
-            1,
             1
         ],
         "sim_method_num_steps": [
-            1,
-            1,
-            1,
-            1,
-            1,
-            1,
-            1,
-            1,
-            1,
-            1,
             1,
             1,
             1,
@@ -748,18 +638,8 @@
         "solution_sens_qp_t_lam_min": 1e-09,
         "store_iterates": false,
         "tau_min": 0.0,
-        "tf": 5.0,
+        "tf": 4.0,
         "time_steps": [
-            0.1,
-            0.1,
-            0.1,
-            0.1,
-            0.1,
-            0.1,
-            0.1,
-            0.1,
-            0.1,
-            0.1,
             0.1,
             0.1,
             0.1,

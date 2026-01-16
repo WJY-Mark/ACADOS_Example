@@ -64,7 +64,7 @@
 #define FRENET_LT_NY0    4
 #define FRENET_LT_NY     4
 #define FRENET_LT_NYN    3
-#define FRENET_LT_N      100
+#define FRENET_LT_N      50
 #define FRENET_LT_NH     0
 #define FRENET_LT_NHN    0
 #define FRENET_LT_NH0    0
