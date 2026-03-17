@@ -24,6 +24,8 @@ import numpy as np
 import casadi as ca
 import math
 
+from scipy.linalg import expm
+
 
 logger = logging.getLogger()
 handler = logging.StreamHandler()
@@ -84,6 +86,10 @@ SLOPE_R_NOMINAL = 8.0e4        # N/rad, rear tire cornering stiffness
 ALPHA_R_BAR_NOMINAL = 0.0      # rad
 FYR_BAR_NOMINAL = 0.0          # N
 
+# Discretization mode: True = ZOH (pre-computed, exact for LTI),
+#                      False = acados IRK (implicit Runge-Kutta)
+USE_ZOH = False
+
 ADD_INIT_CONSTRAINT = True
 ADD_BOUND_CONSTRAINT = True
 USE_STATE_REF = True
@@ -101,19 +107,94 @@ W_DFYF_PHYSICAL = 1.0e4
 W_DFYF_N = W_DFYF_PHYSICAL / (DF_SCALE * DF_SCALE)
 
 
+NX = 5
+NU = 1
+# Discrete parameter layout: [A_d(25), Bu_d(5), Bd_d(5)] = 35
+N_PARAM_DISC = NX * NX + NX * NU + NX  # 35
+
+
+def compute_continuous_matrices(vx, kappa_ref, slope_r, alpha_r_bar, Fyr_bar,
+                                mass, lf, lr, Iz):
+    """Build A_con, Bu_con, Bd_con from physical parameters (after normalization)."""
+    Sf = FYF_SCALE
+    Sd = DF_SCALE
+    d_rear = slope_r * alpha_r_bar + Fyr_bar
+
+    A_con = np.array([
+        [-slope_r / (mass * vx), slope_r * lr / (mass * vx**2) - 1, 0, 0, Sf / (mass * vx)],
+        [slope_r * lr / Iz,     -slope_r * lr**2 / (Iz * vx),       0, 0, Sf * lf / Iz],
+        [0,                      1,                                   0, 0, 0],
+        [vx,                     0,                                   vx, 0, 0],
+        [0,                      0,                                   0, 0, 0],
+    ])
+
+    Bu_con = np.array([
+        [0],
+        [0],
+        [0],
+        [0],
+        [Sd / Sf],
+    ])
+
+    Bd_con = np.array([
+        d_rear / (mass * vx),
+        -d_rear * lr / Iz,
+        -vx * kappa_ref,
+        0,
+        0,
+    ])
+
+    return A_con, Bu_con, Bd_con
+
+
+def c2d_zoh(A_con, Bu_con, Bd_con, dt):
+    """Zero-order hold discretization via matrix exponential (exact for LTI)."""
+    nx = A_con.shape[0]
+    nu = Bu_con.shape[1]
+
+    M = np.zeros((nx + nu + 1, nx + nu + 1))
+    M[:nx, :nx] = A_con * dt
+    M[:nx, nx:nx + nu] = Bu_con * dt
+    M[:nx, nx + nu] = Bd_con * dt
+
+    eM = expm(M)
+
+    A_d = eM[:nx, :nx]
+    Bu_d = eM[:nx, nx:nx + nu]
+    Bd_d = eM[:nx, nx + nu]
+
+    return A_d, Bu_d, Bd_d
+
+
+def discretize_stage(phys_params, dt):
+    """Compute discrete matrices for one stage and pack into parameter vector.
+    phys_params: [vx, kappa_ref, slope_r, alpha_r_bar, Fyr_bar, mass, lf, lr, Iz]
+    Returns: flat array of length N_PARAM_DISC = 35
+    """
+    A_con, Bu_con, Bd_con = compute_continuous_matrices(*phys_params)
+    A_d, Bu_d, Bd_d = c2d_zoh(A_con, Bu_con, Bd_con, dt)
+    return np.concatenate([A_d.flatten(order='F'), Bu_d.flatten(order='F'), Bd_d])
+
+
+N_PARAM_PHYS = 9   # [vx, kappa_ref, slope_r, alpha_r_bar, Fyr_bar, mass, lf, lr, Iz]
+
+
 def export_esa_mpc_model():
     """
-    ESA MPC lateral control model WITHOUT inertia lag.
-    5 states, 1 control. Fyf and dFyf are independently normalizable.
+    ESA MPC lateral control model (5 states, 1 control).
 
-    State x = [beta, yaw_rate, delta_theta, lat_error, Fyf_n]
-      Fyf_n = Fyf / FYF_SCALE  (set FYF_SCALE=1 to use physical Fyf)
-    Control u = [dFyf_n]
-      dFyf_n = dFyf / DF_SCALE (set DF_SCALE=1 to use physical dFyf)
-    Parameters p = [vx, kappa_ref, slope_r, alpha_r_bar, Fyr_bar,
-                    mass, lf, lr, Iz]
+    When USE_ZOH=True  (DISCRETE):
+        Parameters p = [A_d_flat(25), Bu_d_flat(5), Bd_d(5)]  (total 35)
+        Dynamics: x_{k+1} = A_d @ x_k + Bu_d @ u_k + Bd_d
+
+    When USE_ZOH=False (IRK continuous):
+        Parameters p = [vx, kappa_ref, slope_r, alpha_r_bar, Fyr_bar,
+                        mass, lf, lr, Iz]  (total 9)
+        Dynamics: xdot = f_expl(x, u, p)
     """
     model_name = "esa_mpc"
+    nx = NX
+    nu = NU
 
     beta = ca.SX.sym("beta")
     yaw_rate = ca.SX.sym("yaw_rate")
@@ -125,62 +206,69 @@ def export_esa_mpc_model():
     dFyf_n = ca.SX.sym("dFyf_n")
     u = ca.vertcat(dFyf_n)
 
-    beta_dot = ca.SX.sym("beta_dot")
-    yaw_rate_dot = ca.SX.sym("yaw_rate_dot")
-    delta_theta_dot = ca.SX.sym("delta_theta_dot")
-    lat_error_dot = ca.SX.sym("lat_error_dot")
-    Fyf_n_dot = ca.SX.sym("Fyf_n_dot")
-    xdot = ca.vertcat(beta_dot, yaw_rate_dot, delta_theta_dot,
-                       lat_error_dot, Fyf_n_dot)
-
-    vx = ca.SX.sym("vx")
-    kappa_ref = ca.SX.sym("kappa_ref")
-    slope_r = ca.SX.sym("slope_r")
-    alpha_r_bar = ca.SX.sym("alpha_r_bar")
-    Fyr_bar = ca.SX.sym("Fyr_bar")
-    mass = ca.SX.sym("mass")
-    lf = ca.SX.sym("lf")
-    lr = ca.SX.sym("lr")
-    Iz = ca.SX.sym("Iz")
-    p = ca.vertcat(vx, kappa_ref, slope_r, alpha_r_bar, Fyr_bar,
-                   mass, lf, lr, Iz)
-
-    Sf = FYF_SCALE
-    Sd = DF_SCALE
-    d_rear = slope_r * alpha_r_bar + Fyr_bar
-
-    # Fyf = Sf * Fyf_n  =>  terms with Fyf gain factor Sf
-    # d(Fyf)/dt = Sd * dFyf_n  =>  d(Sf*Fyf_n)/dt = Sd*dFyf_n
-    #                           =>  d(Fyf_n)/dt = Sd/Sf * dFyf_n
-    f_expl = ca.vertcat(
-        -slope_r / (mass * vx) * beta
-        + (slope_r * lr / (mass * vx**2) - 1) * yaw_rate
-        + Sf / (mass * vx) * Fyf_n
-        + d_rear / (mass * vx),
-
-        slope_r * lr / Iz * beta
-        - slope_r * lr**2 / (Iz * vx) * yaw_rate
-        + Sf * lf / Iz * Fyf_n
-        - d_rear * lr / Iz,
-
-        yaw_rate - vx * kappa_ref,
-
-        vx * beta + vx * delta_theta,
-
-        Sd / Sf * dFyf_n,
-    )
-
-    f_impl = xdot - f_expl
-
     model = AcadosModel()
-    model.f_impl_expr = f_impl
-    model.f_expl_expr = f_expl
+
+    if USE_ZOH:
+        A_d_flat = ca.SX.sym("A_d", nx * nx)
+        Bu_d_flat = ca.SX.sym("Bu_d", nx * nu)
+        Bd_d = ca.SX.sym("Bd_d", nx)
+        p = ca.vertcat(A_d_flat, Bu_d_flat, Bd_d)
+
+        A_d = ca.reshape(A_d_flat, nx, nx)
+        Bu_d = ca.reshape(Bu_d_flat, nx, nu)
+
+        model.disc_dyn_expr = A_d @ x + Bu_d @ u + Bd_d
+    else:
+        vx = ca.SX.sym("vx")
+        kappa_ref = ca.SX.sym("kappa_ref")
+        slope_r = ca.SX.sym("slope_r")
+        alpha_r_bar = ca.SX.sym("alpha_r_bar")
+        Fyr_bar = ca.SX.sym("Fyr_bar")
+        mass = ca.SX.sym("mass")
+        lf = ca.SX.sym("lf")
+        lr = ca.SX.sym("lr")
+        Iz = ca.SX.sym("Iz")
+        p = ca.vertcat(vx, kappa_ref, slope_r, alpha_r_bar, Fyr_bar,
+                       mass, lf, lr, Iz)
+
+        Sf = FYF_SCALE
+        Sd = DF_SCALE
+        d_rear = slope_r * alpha_r_bar + Fyr_bar
+
+        f_expl = ca.vertcat(
+            -slope_r / (mass * vx) * beta
+            + (slope_r * lr / (mass * vx**2) - 1) * yaw_rate
+            + Sf / (mass * vx) * Fyf_n
+            + d_rear / (mass * vx),
+
+            slope_r * lr / Iz * beta
+            - slope_r * lr**2 / (Iz * vx) * yaw_rate
+            + Sf * lf / Iz * Fyf_n
+            - d_rear * lr / Iz,
+
+            yaw_rate - vx * kappa_ref,
+
+            vx * beta + vx * delta_theta,
+
+            Sd / Sf * dFyf_n,
+        )
+
+        beta_dot = ca.SX.sym("beta_dot")
+        yaw_rate_dot = ca.SX.sym("yaw_rate_dot")
+        delta_theta_dot = ca.SX.sym("delta_theta_dot")
+        lat_error_dot = ca.SX.sym("lat_error_dot")
+        Fyf_n_dot = ca.SX.sym("Fyf_n_dot")
+        xdot = ca.vertcat(beta_dot, yaw_rate_dot, delta_theta_dot,
+                           lat_error_dot, Fyf_n_dot)
+
+        model.f_expl_expr = f_expl
+        model.f_impl_expr = xdot - f_expl
+        model.xdot = xdot
+
     model.x = x
-    model.xdot = xdot
     model.u = u
     model.p = p
     model.name = model_name
-    model.z = ca.vertcat([])
 
     return model
 
@@ -210,10 +298,11 @@ def output_debug_info_ocp(ocp):
     logger.debug('nlp solver type:%s', ocp.solver_options.nlp_solver_type)
     logger.debug('hessian_approx method:%s', ocp.solver_options.hessian_approx)
     logger.debug('integrator_type:%s', ocp.solver_options.integrator_type)
-    logger.debug('sim_method_num_stages:%d',
-                 ocp.solver_options.sim_method_num_stages)
-    logger.debug('sim_method_num_steps:%d',
-                 ocp.solver_options.sim_method_num_steps)
+    if ocp.solver_options.integrator_type != "DISCRETE":
+        logger.debug('sim_method_num_stages:%d',
+                     ocp.solver_options.sim_method_num_stages)
+        logger.debug('sim_method_num_steps:%d',
+                     ocp.solver_options.sim_method_num_steps)
     logger.debug('print_level:%d', ocp.solver_options.print_level)
     logger.debug('tollerance:%f', ocp.solver_options.tol)
 
@@ -248,10 +337,9 @@ def set_acados_model(stage_n, tf):
     model = export_esa_mpc_model()
     ocp.model = model
 
-    nx = model.x.size()[0]   # 6
+    nx = model.x.size()[0]   # 5
     nu = model.u.size()[0]   # 1
-    np_ = model.p.size()[0]  # 10
-    ny = nx + nu             # 7
+    ny = nx + nu             # 6
 
     ocp.dims.N = stage_n
 
@@ -315,25 +403,28 @@ def set_acados_model(stage_n, tf):
         ocp.constraints.ubu = np.array([DFYF_N_UPPER])
         ocp.constraints.idxbu = np.array([0])
 
-    # default parameter values: [vx, kappa_ref, slope_r, alpha_r_bar, Fyr_bar,
-    #                             mass, lf, lr, Iz]
-    ocp.parameter_values = np.array([
+    default_phys = np.array([
         VX_NOMINAL, KAPPA_REF_NOMINAL,
         SLOPE_R_NOMINAL, ALPHA_R_BAR_NOMINAL, FYR_BAR_NOMINAL,
         VEHICLE_MASS, VEHICLE_LF, VEHICLE_LR, VEHICLE_IZ
     ])
 
+    if USE_ZOH:
+        ocp.parameter_values = discretize_stage(default_phys, tf / stage_n)
+    else:
+        ocp.parameter_values = default_phys
+
     # solver settings
     ocp.solver_options.qp_solver = "PARTIAL_CONDENSING_HPIPM"
     ocp.solver_options.nlp_solver_type = "SQP_RTI"
     ocp.solver_options.hessian_approx = "GAUSS_NEWTON"
-    ocp.solver_options.integrator_type = "IRK"
-    ocp.solver_options.sim_method_num_stages = 4
-    ocp.solver_options.sim_method_num_steps = 1
+    if USE_ZOH:
+        ocp.solver_options.integrator_type = "DISCRETE"
+    else:
+        ocp.solver_options.integrator_type = "IRK"
+        ocp.solver_options.sim_method_num_stages = 4
+        ocp.solver_options.sim_method_num_steps = 1
     ocp.solver_options.print_level = 0
-    # ocp.solver_options.qp_solver_ric_alg = 1           # Riccati 算法选择
-    # ocp.solver_options.hpipm_mode = "ROBUST"           # 试试 BALANCE / ROBUST
-    # ocp.solver_options.levenberg_marquardt = 1e-2        # 手动加 LM 正则化
     ocp.solver_options.tol = 1e-6
     ocp.solver_options.tf = tf
     ocp.solver_options.N_horizon = stage_n
@@ -341,8 +432,11 @@ def set_acados_model(stage_n, tf):
     output_debug_info_ocp(ocp)
     json_file = os.path.join("./" + model.name + "_acados_ocp.json")
     acados_solver = AcadosOcpSolver(ocp, json_file=json_file)
-    integrator = AcadosSimSolver(ocp, json_file=json_file)
-    return acados_solver, integrator
+
+    sim_solver = None
+    if not USE_ZOH:
+        sim_solver = AcadosSimSolver(ocp, json_file=json_file)
+    return acados_solver, sim_solver
 
 def get_reference(N):
     """Generate reference trajectory for the 5-state ESA MPC model.
@@ -496,23 +590,22 @@ if __name__ == "__main__":
     matplotlib.set_loglevel("warning")
     N = 50
     tf = 5.0
+    dt = tf / N
     acados_solver, sim_solver = set_acados_model(N, tf)
 
-    # quick integrator test
-    # xx = np.array([0.0, 0.0, 0.0, 0.5, 0.0])
-    # uu = np.array([0.01])
-    # sim_solver.set('T', tf / N)
-    # xx_next = sim_solver.simulate(x=xx, u=uu)
-    # print(f"sim test: x_next = {xx_next}")
-
-    # parameter vector: [vx, kappa_ref, slope_r, alpha_r_bar, Fyr_bar,
-    #                     mass, lf, lr, Iz]
-    default_p = np.array([
+    # Physical parameters: [vx, kappa_ref, slope_r, alpha_r_bar, Fyr_bar,
+    #                        mass, lf, lr, Iz]
+    default_phys = np.array([
         VX_NOMINAL, KAPPA_REF_NOMINAL,
         SLOPE_R_NOMINAL, ALPHA_R_BAR_NOMINAL, FYR_BAR_NOMINAL,
         VEHICLE_MASS, VEHICLE_LF, VEHICLE_LR, VEHICLE_IZ
     ])
-    params = [default_p.copy() for _ in range(N + 1)]
+    phys_params = [default_phys.copy() for _ in range(N)]
+
+    if USE_ZOH:
+        solver_params = [discretize_stage(phys_params[i], dt) for i in range(N)]
+    else:
+        solver_params = phys_params
 
     y_ref, y_ref_e = get_reference(N)
     x_lb, x_ub, u_lb, u_ub = get_bounds(N)
@@ -521,19 +614,55 @@ if __name__ == "__main__":
                     LATERAL_ERROR_INIT, FYF_N_INIT])
     x0[IDX_LATERAL_ERROR] = 0.5  # start with 0.5m offset
 
-    for i in range(N + 1):
-        acados_solver.set(i, 'p', params[i])
+    for i in range(N):
+        acados_solver.set(i, 'p', solver_params[i])
         if ADD_BOUND_CONSTRAINT:
-            if i < N:
-                acados_solver.constraints_set(i, "lbu", u_lb[i])
-                acados_solver.constraints_set(i, "ubu", u_ub[i])
+            acados_solver.constraints_set(i, "lbu", u_lb[i])
+            acados_solver.constraints_set(i, "ubu", u_ub[i])
             acados_solver.constraints_set(i, "lbx", x_lb[i])
             acados_solver.constraints_set(i, "ubx", x_ub[i])
         if USE_STATE_REF:
-            if i < N:
-                acados_solver.cost_set(i, "yref", y_ref[i])
-            else:
-                acados_solver.cost_set(i, "yref", y_ref_e)
+            acados_solver.cost_set(i, "yref", y_ref[i])
+    acados_solver.set(N, 'p', solver_params[-1])
+    if ADD_BOUND_CONSTRAINT:
+        acados_solver.constraints_set(N, "lbx", x_lb[N])
+        acados_solver.constraints_set(N, "ubx", x_ub[N])
+    if USE_STATE_REF:
+        acados_solver.cost_set(N, "yref", y_ref_e)
+
+    np.set_printoptions(precision=6, linewidth=120, suppress=True)
+    if USE_ZOH:
+        p0 = acados_solver.get(0, 'p')
+        A_d = p0[:NX*NX].reshape(NX, NX, order='F')
+        Bu_d = p0[NX*NX:NX*NX+NX*NU].reshape(NX, NU, order='F')
+        Bd_d = p0[NX*NX+NX*NU:]
+        print("=== Stage 0 discrete matrices (ZOH) ===")
+        print(f"A_d ({NX}x{NX}):\n{A_d}")
+        print(f"Bu_d ({NX}x{NU}):\n{Bu_d}")
+        print(f"Bd_d ({NX}x1):\n{Bd_d}")
+        eigs = np.linalg.eigvals(A_d)
+        print(f"eig(A_d): {eigs}")
+        print(f"|eig|:    {np.abs(eigs)}")
+        print()
+    else:
+        sim_solver.set("T", dt)
+        sim_solver.set("p", solver_params[0])
+        x_zero = np.zeros(NX)
+        u_zero = np.zeros(NU)
+        sim_solver.set("x", x_zero)
+        sim_solver.set("u", u_zero)
+        sim_solver.solve()
+        Bd_d = sim_solver.get("x")
+        A_d = sim_solver.get("Sx")
+        Bu_d = sim_solver.get("Su")
+        print("=== Stage 0 discrete matrices (IRK sensitivities) ===")
+        print(f"A_d = Sx ({NX}x{NX}):\n{A_d}")
+        print(f"Bu_d = Su ({NX}x{NU}):\n{Bu_d}")
+        print(f"Bd_d = f(0,0) ({NX}x1):\n{Bd_d}")
+        eigs = np.linalg.eigvals(A_d)
+        print(f"eig(A_d): {eigs}")
+        print(f"|eig|:    {np.abs(eigs)}")
+        print()
 
     start_time = time.perf_counter()
     status = acados_solver.solve_for_x0(x0)
@@ -553,7 +682,7 @@ if __name__ == "__main__":
 
     plot_acados_results(x_sol, u_sol, N, tf, y_ref, y_ref_e)
 
-    vx_list = [params[i][0] for i in range(N + 1)]
-    kappa_list = [params[i][1] for i in range(N + 1)]
+    vx_list = [phys_params[min(i, N - 1)][0] for i in range(N + 1)]
+    kappa_list = [phys_params[min(i, N - 1)][1] for i in range(N + 1)]
     visualize_in_cartesian(x_sol, N, tf, vx_list, kappa_list)
     plt.show()
