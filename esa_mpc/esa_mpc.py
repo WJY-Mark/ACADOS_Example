@@ -33,115 +33,106 @@ handler.setFormatter(formatter)
 logger.addHandler(handler)
 logger.setLevel(logging.DEBUG)
 
-# State indices (matching esa_constants.h)
+# State indices
 IDX_BETA = 0
 IDX_YAW_RATE = 1
 IDX_HEADING_ERROR = 2
 IDX_LATERAL_ERROR = 3
 IDX_FYF = 4
-IDX_FYF_CMD = 5
 
-# Normalization scale for control only (matching norm_range_dFyf in C++)
-FORCE_SCALE = 1.0e4            # dFyf_cmd_n = dFyf_cmd / FORCE_SCALE
+# Normalization: x_or_u_normalized = x_or_u_physical / SCALE
+# Set SCALE = 1.0 to disable normalization for that variable
+FYF_SCALE = 1.0e4              # Fyf_n = Fyf / FYF_SCALE
+DF_SCALE = 1.0e4               # dFyf_n = dFyf / DF_SCALE
 
-# State bounds (all in physical units)
+# State bounds (physical values, Fyf auto-scaled by FYF_SCALE)
 BETA_UPPER = 0.2               # ~11.5 deg
 YAW_RATE_UPPER = 0.5           # rad/s
-HEADING_ERROR_UPPER = 0.3      # rad (~17 deg)
-LATERAL_ERROR_UPPER = 2.0      # m
-FYF_UPPER = 1.0e4              # N
-FYF_CMD_UPPER = 1.0e4          # N
+HEADING_ERROR_UPPER = 1.0      # rad (~17 deg)
+LATERAL_ERROR_UPPER = 5.0      # m
+FYF_PHYSICAL_MAX = 1.0e4       # N
+FYF_N_UPPER = FYF_PHYSICAL_MAX / FYF_SCALE
+FYF_N_LOWER = -FYF_N_UPPER
 
 BETA_LOWER = -BETA_UPPER
 YAW_RATE_LOWER = -YAW_RATE_UPPER
 HEADING_ERROR_LOWER = -HEADING_ERROR_UPPER
 LATERAL_ERROR_LOWER = -LATERAL_ERROR_UPPER
-FYF_LOWER = -FYF_UPPER
-FYF_CMD_LOWER = -FYF_CMD_UPPER
 
-# Control bounds (normalized by FORCE_SCALE)
-DFYF_CMD_N_UPPER = 10.0        # = 1e5 N/s / FORCE_SCALE
-DFYF_CMD_N_LOWER = -DFYF_CMD_N_UPPER
+# Control bounds (physical value, auto-scaled by DF_SCALE)
+DFYF_PHYSICAL_MAX = 1.0e5     # N/s
+DFYF_N_UPPER = DFYF_PHYSICAL_MAX / DF_SCALE
+DFYF_N_LOWER = -DFYF_N_UPPER
 
-# Initial state (physical units)
+# Initial state (physical values, Fyf auto-scaled)
 BETA_INIT = 0.0
 YAW_RATE_INIT = 0.0
 HEADING_ERROR_INIT = 0.0
 LATERAL_ERROR_INIT = 0.0
-FYF_INIT = 0.0                 # N
-FYF_CMD_INIT = 0.0             # N
+FYF_N_INIT = 0.0               # = Fyf_physical_init / FYF_SCALE
 
 # Vehicle parameters (default values)
 VEHICLE_MASS = 1800.0          # kg
 VEHICLE_LF = 1.2               # m, CG to front axle
 VEHICLE_LR = 1.6               # m, CG to rear axle
 VEHICLE_IZ = 3000.0            # kg*m^2, yaw inertia
-FYF_TAU = 1e-2                 # s, first-order lag time constant
 
 # Nominal operating parameters
-VX_NOMINAL = 10.0              # m/s
+VX_NOMINAL = 30.0              # m/s
 KAPPA_REF_NOMINAL = 0.0        # 1/m
 SLOPE_R_NOMINAL = 8.0e4        # N/rad, rear tire cornering stiffness
 ALPHA_R_BAR_NOMINAL = 0.0      # rad
 FYR_BAR_NOMINAL = 0.0          # N
 
 ADD_INIT_CONSTRAINT = True
-ADD_BOUND_CONSTRAINT = False
+ADD_BOUND_CONSTRAINT = True
 USE_STATE_REF = True
 
 # Cost weights (Bryson's rule inspired)
 W_BETA = 0.0
-W_YAW_RATE = 1.5e4
-W_HEADING_ERROR = 2.0e4
-W_LATERAL_ERROR = 1.5e3
-W_FYF = 0.0
-W_FYF_CMD = 0.0
-W_DFYF_CMD_N = 1e-5
+W_YAW_RATE = 15.0
+W_HEADING_ERROR = 20.0
+W_LATERAL_ERROR = 1.5
+# Physical weight for Fyf, auto-scaled by FYF_SCALE^2
+W_FYF_PHYSICAL = 0.0
+W_FYF_N = W_FYF_PHYSICAL / (FYF_SCALE * FYF_SCALE)
+# Physical weight for dFyf, auto-scaled by DF_SCALE^2
+W_DFYF_PHYSICAL = 1.0e4
+W_DFYF_N = W_DFYF_PHYSICAL / (DF_SCALE * DF_SCALE)
 
 
 def export_esa_mpc_model():
     """
-    ESA MPC lateral control model with 6 states and 1 control input.
-    Only the control input dFyf_cmd is normalized by FORCE_SCALE
-    (matching norm_range_dFyf in C++). All states are in physical units.
+    ESA MPC lateral control model WITHOUT inertia lag.
+    5 states, 1 control. Fyf and dFyf are independently normalizable.
 
-    State x = [beta, yaw_rate, delta_theta, lat_error, Fyf, Fyf_cmd]
-
-    Normalized control u = [dFyf_cmd_n]
-      where dFyf_cmd_n = dFyf_cmd / FORCE_SCALE
-
+    State x = [beta, yaw_rate, delta_theta, lat_error, Fyf_n]
+      Fyf_n = Fyf / FYF_SCALE  (set FYF_SCALE=1 to use physical Fyf)
+    Control u = [dFyf_n]
+      dFyf_n = dFyf / DF_SCALE (set DF_SCALE=1 to use physical dFyf)
     Parameters p = [vx, kappa_ref, slope_r, alpha_r_bar, Fyr_bar,
-                    mass, lf, lr, Iz, tau]
-
-    To recover physical control:
-      dFyf_cmd = dFyf_cmd_n * FORCE_SCALE
+                    mass, lf, lr, Iz]
     """
     model_name = "esa_mpc"
 
-    # states (all physical units)
     beta = ca.SX.sym("beta")
     yaw_rate = ca.SX.sym("yaw_rate")
     delta_theta = ca.SX.sym("delta_theta")
     lat_error = ca.SX.sym("lat_error")
-    Fyf = ca.SX.sym("Fyf")
-    Fyf_cmd = ca.SX.sym("Fyf_cmd")
-    x = ca.vertcat(beta, yaw_rate, delta_theta, lat_error, Fyf, Fyf_cmd)
+    Fyf_n = ca.SX.sym("Fyf_n")
+    x = ca.vertcat(beta, yaw_rate, delta_theta, lat_error, Fyf_n)
 
-    # control (normalized)
-    dFyf_cmd_n = ca.SX.sym("dFyf_cmd_n")
-    u = ca.vertcat(dFyf_cmd_n)
+    dFyf_n = ca.SX.sym("dFyf_n")
+    u = ca.vertcat(dFyf_n)
 
-    # state derivatives
     beta_dot = ca.SX.sym("beta_dot")
     yaw_rate_dot = ca.SX.sym("yaw_rate_dot")
     delta_theta_dot = ca.SX.sym("delta_theta_dot")
     lat_error_dot = ca.SX.sym("lat_error_dot")
-    Fyf_dot = ca.SX.sym("Fyf_dot")
-    Fyf_cmd_dot = ca.SX.sym("Fyf_cmd_dot")
+    Fyf_n_dot = ca.SX.sym("Fyf_n_dot")
     xdot = ca.vertcat(beta_dot, yaw_rate_dot, delta_theta_dot,
-                       lat_error_dot, Fyf_dot, Fyf_cmd_dot)
+                       lat_error_dot, Fyf_n_dot)
 
-    # parameters
     vx = ca.SX.sym("vx")
     kappa_ref = ca.SX.sym("kappa_ref")
     slope_r = ca.SX.sym("slope_r")
@@ -151,32 +142,32 @@ def export_esa_mpc_model():
     lf = ca.SX.sym("lf")
     lr = ca.SX.sym("lr")
     Iz = ca.SX.sym("Iz")
-    tau = ca.SX.sym("tau")
     p = ca.vertcat(vx, kappa_ref, slope_r, alpha_r_bar, Fyr_bar,
-                   mass, lf, lr, Iz, tau)
+                   mass, lf, lr, Iz)
 
-    S = FORCE_SCALE
+    Sf = FYF_SCALE
+    Sd = DF_SCALE
     d_rear = slope_r * alpha_r_bar + Fyr_bar
 
-    # Row 5: d(Fyf_cmd)/dt = dFyf_cmd = S * dFyf_cmd_n
+    # Fyf = Sf * Fyf_n  =>  terms with Fyf gain factor Sf
+    # d(Fyf)/dt = Sd * dFyf_n  =>  d(Sf*Fyf_n)/dt = Sd*dFyf_n
+    #                           =>  d(Fyf_n)/dt = Sd/Sf * dFyf_n
     f_expl = ca.vertcat(
         -slope_r / (mass * vx) * beta
         + (slope_r * lr / (mass * vx**2) - 1) * yaw_rate
-        + 1 / (mass * vx) * Fyf
+        + Sf / (mass * vx) * Fyf_n
         + d_rear / (mass * vx),
 
         slope_r * lr / Iz * beta
         - slope_r * lr**2 / (Iz * vx) * yaw_rate
-        + lf / Iz * Fyf
+        + Sf * lf / Iz * Fyf_n
         - d_rear * lr / Iz,
 
         yaw_rate - vx * kappa_ref,
 
         vx * beta + vx * delta_theta,
 
-        -1 / tau * Fyf + 1 / tau * Fyf_cmd,
-
-        S * dFyf_cmd_n,
+        Sd / Sf * dFyf_n,
     )
 
     f_impl = xdot - f_expl
@@ -269,8 +260,8 @@ def set_acados_model(stage_n, tf):
     ocp.cost.cost_type_e = "LINEAR_LS"
 
     Q = np.diag([W_BETA, W_YAW_RATE, W_HEADING_ERROR,
-                 W_LATERAL_ERROR, W_FYF, W_FYF_CMD])
-    R = np.diag([W_DFYF_CMD_N])
+                 W_LATERAL_ERROR, W_FYF_N])
+    R = np.diag([W_DFYF_N])
 
     Vx = np.zeros((ny, nx))
     Vx[:nx, :nx] = np.eye(nx)
@@ -293,21 +284,20 @@ def set_acados_model(stage_n, tf):
     ocp.cost.Vx_e = np.eye(nx)
     ocp.cost.yref_e = np.zeros(nx)
 
-    # initial state constraint (all 6 states pinned)
     if ADD_INIT_CONSTRAINT:
         x_lb_0 = np.array([BETA_LOWER, YAW_RATE_LOWER, HEADING_ERROR_LOWER,
-                           LATERAL_ERROR_LOWER, FYF_LOWER, FYF_CMD_LOWER])
+                           LATERAL_ERROR_LOWER, FYF_N_LOWER])
         x_ub_0 = np.array([BETA_UPPER, YAW_RATE_UPPER, HEADING_ERROR_UPPER,
-                           LATERAL_ERROR_UPPER, FYF_UPPER, FYF_CMD_UPPER])
+                           LATERAL_ERROR_UPPER, FYF_N_UPPER])
         ocp.constraints.lbx_0 = x_lb_0
         ocp.constraints.ubx_0 = x_ub_0
         ocp.constraints.idxbx_0 = np.arange(nx)
 
     if ADD_BOUND_CONSTRAINT:
         x_lb = np.array([BETA_LOWER, YAW_RATE_LOWER, HEADING_ERROR_LOWER,
-                         LATERAL_ERROR_LOWER, FYF_LOWER, FYF_CMD_LOWER])
+                         LATERAL_ERROR_LOWER, FYF_N_LOWER])
         x_ub = np.array([BETA_UPPER, YAW_RATE_UPPER, HEADING_ERROR_UPPER,
-                         LATERAL_ERROR_UPPER, FYF_UPPER, FYF_CMD_UPPER])
+                         LATERAL_ERROR_UPPER, FYF_N_UPPER])
 
         ocp.constraints.lbx_0 = x_lb
         ocp.constraints.ubx_0 = x_ub
@@ -321,27 +311,30 @@ def set_acados_model(stage_n, tf):
         ocp.constraints.ubx_e = x_ub
         ocp.constraints.idxbx_e = np.arange(nx)
 
-        ocp.constraints.lbu = np.array([DFYF_CMD_N_LOWER])
-        ocp.constraints.ubu = np.array([DFYF_CMD_N_UPPER])
+        ocp.constraints.lbu = np.array([DFYF_N_LOWER])
+        ocp.constraints.ubu = np.array([DFYF_N_UPPER])
         ocp.constraints.idxbu = np.array([0])
 
     # default parameter values: [vx, kappa_ref, slope_r, alpha_r_bar, Fyr_bar,
-    #                             mass, lf, lr, Iz, tau]
+    #                             mass, lf, lr, Iz]
     ocp.parameter_values = np.array([
         VX_NOMINAL, KAPPA_REF_NOMINAL,
         SLOPE_R_NOMINAL, ALPHA_R_BAR_NOMINAL, FYR_BAR_NOMINAL,
-        VEHICLE_MASS, VEHICLE_LF, VEHICLE_LR, VEHICLE_IZ, FYF_TAU
+        VEHICLE_MASS, VEHICLE_LF, VEHICLE_LR, VEHICLE_IZ
     ])
 
     # solver settings
     ocp.solver_options.qp_solver = "PARTIAL_CONDENSING_HPIPM"
     ocp.solver_options.nlp_solver_type = "SQP_RTI"
     ocp.solver_options.hessian_approx = "GAUSS_NEWTON"
-    ocp.solver_options.integrator_type = "ERK"
+    ocp.solver_options.integrator_type = "IRK"
     ocp.solver_options.sim_method_num_stages = 4
     ocp.solver_options.sim_method_num_steps = 1
     ocp.solver_options.print_level = 0
-    ocp.solver_options.tol = 1e-4
+    # ocp.solver_options.qp_solver_ric_alg = 1           # Riccati 算法选择
+    # ocp.solver_options.hpipm_mode = "ROBUST"           # 试试 BALANCE / ROBUST
+    # ocp.solver_options.levenberg_marquardt = 1e-2        # 手动加 LM 正则化
+    ocp.solver_options.tol = 1e-6
     ocp.solver_options.tf = tf
     ocp.solver_options.N_horizon = stage_n
 
@@ -352,35 +345,35 @@ def set_acados_model(stage_n, tf):
     return acados_solver, integrator
 
 def get_reference(N):
-    """Generate reference trajectory for the 6-state ESA MPC model.
-    y_ref: [beta, yaw_rate, delta_theta, lat_error, Fyf, Fyf_cmd, dFyf_cmd]
-    y_ref_e: [beta, yaw_rate, delta_theta, lat_error, Fyf, Fyf_cmd]
+    """Generate reference trajectory for the 5-state ESA MPC model.
+    y_ref: [beta, yaw_rate, delta_theta, lat_error, Fyf, dFyf_n]
+    y_ref_e: [beta, yaw_rate, delta_theta, lat_error, Fyf]
     """
-    ny = 7  # nx(6) + nu(1)
-    nx = 6
+    ny = 6  # nx(5) + nu(1)
+    nx = 5
     y_ref = []
     for i in range(N):
         ref = np.zeros(ny)
         if i < N * 0.2:
-            ref[IDX_LATERAL_ERROR] = 0.0
+            ref[IDX_LATERAL_ERROR] = 3.0
         elif i < N * 0.6:
-            ref[IDX_LATERAL_ERROR] = 1.0
+            ref[IDX_LATERAL_ERROR] = 3.0
         else:
-            ref[IDX_LATERAL_ERROR] = 0.0
+            ref[IDX_LATERAL_ERROR] = 3.0
         y_ref.append(ref)
 
     y_ref_e = np.zeros(nx)
-    y_ref_e[IDX_LATERAL_ERROR] = 0.0
+    y_ref_e[IDX_LATERAL_ERROR] = 3.0
     return y_ref, y_ref_e
 
 def get_bounds(N):
     """Generate state/control bounds. States are physical, control is normalized."""
     x_lb_vec = np.array([BETA_LOWER, YAW_RATE_LOWER, HEADING_ERROR_LOWER,
-                         LATERAL_ERROR_LOWER, FYF_LOWER, FYF_CMD_LOWER])
+                         LATERAL_ERROR_LOWER, FYF_N_LOWER])
     x_ub_vec = np.array([BETA_UPPER, YAW_RATE_UPPER, HEADING_ERROR_UPPER,
-                         LATERAL_ERROR_UPPER, FYF_UPPER, FYF_CMD_UPPER])
-    u_lb_vec = np.array([DFYF_CMD_N_LOWER])
-    u_ub_vec = np.array([DFYF_CMD_N_UPPER])
+                         LATERAL_ERROR_UPPER, FYF_N_UPPER])
+    u_lb_vec = np.array([DFYF_N_LOWER])
+    u_ub_vec = np.array([DFYF_N_UPPER])
 
     x_lb = []
     x_ub = []
@@ -397,15 +390,15 @@ def get_bounds(N):
 
 def plot_acados_results(x, u, N, tf, y_ref=None, y_ref_e=None):
     """
-    Plot the results from Acados solver for the 6-state ESA MPC model.
+    Plot the results from Acados solver for the 5-state ESA MPC model.
 
     Args:
-        x: array (N+1, 6) - [beta, yaw_rate, delta_theta, lat_error, Fyf, Fyf_cmd]
-        u: array (N, 1) - [dFyf_cmd]
+        x: array (N+1, 5) - [beta, yaw_rate, delta_theta, lat_error, Fyf]
+        u: array (N, 1) - [dFyf_n]
         N: Number of control intervals
         tf: Final time
-        y_ref: list of (N,) refs, each shape (7,)
-        y_ref_e: terminal ref shape (6,)
+        y_ref: list of (N,) refs, each shape (6,)
+        y_ref_e: terminal ref shape (5,)
     """
     x = np.array(x)
     u = np.array(u)
@@ -422,11 +415,10 @@ def plot_acados_results(x, u, N, tf, y_ref=None, y_ref_e=None):
         (IDX_YAW_RATE, "yaw_rate (rad/s)", "Yaw Rate"),
         (IDX_HEADING_ERROR, "delta_theta (rad)", "Heading Error"),
         (IDX_LATERAL_ERROR, "lat_error (m)", "Lateral Error"),
-        (IDX_FYF, "Fyf (N)", "Front Lateral Force"),
-        (IDX_FYF_CMD, "Fyf_cmd (N)", "Front Lateral Force Cmd"),
+        (IDX_FYF, "Fyf_n (normalized)", "Front Lateral Force (x FYF_SCALE = N)"),
     ]
 
-    fig, axes = plt.subplots(len(state_labels) + 1, 1, figsize=(12, 16), sharex=True)
+    fig, axes = plt.subplots(len(state_labels) + 1, 1, figsize=(12, 14), sharex=True)
 
     for ax, (idx, ylabel, title) in zip(axes, state_labels):
         ax.plot(t_x, x[:, idx], 'b-', linewidth=2, label=ylabel.split()[0])
@@ -438,12 +430,12 @@ def plot_acados_results(x, u, N, tf, y_ref=None, y_ref_e=None):
         ax.legend()
         ax.grid(True)
 
-    axes[-1].step(t_u, u[:, 0], 'b-', linewidth=2, where='post', label='dFyf_cmd')
+    axes[-1].step(t_u, u[:, 0], 'b-', linewidth=2, where='post', label='dFyf_n')
     if has_ref:
         axes[-1].step(t_u, yr[:, -1], 'm--', linewidth=1.2, where='post', label='ref')
     axes[-1].set_xlabel('Time (s)')
-    axes[-1].set_ylabel('dFyf_cmd_n (normalized)')
-    axes[-1].set_title('Control: dFyf_cmd_n (x FORCE_SCALE = physical N/s)')
+    axes[-1].set_ylabel('dFyf_n (normalized)')
+    axes[-1].set_title('Control: dFyf_n (x DF_SCALE = physical N/s)')
     axes[-1].legend()
     axes[-1].grid(True)
 
@@ -455,7 +447,7 @@ def visualize_in_cartesian(x, N, tf, vx_list, kappa_list):
     Visualize vehicle trajectory vs reference line in Cartesian coordinates.
 
     Args:
-        x: array (N+1, 6) - states [beta, yaw_rate, delta_theta, lat_error, Fyf, Fyf_cmd]
+        x: array (N+1, 5) - states [beta, yaw_rate, delta_theta, lat_error, Fyf]
         N: Number of control intervals
         tf: Final time
         vx_list: longitudinal velocity per step (N+1,)
@@ -506,19 +498,19 @@ if __name__ == "__main__":
     tf = 5.0
     acados_solver, sim_solver = set_acados_model(N, tf)
 
-    # quick integrator test (force states are normalized)
-    xx = np.array([0.0, 0.0, 0.0, 0.5, 0.0, 0.0])
-    uu = np.array([0.01])
-    sim_solver.set('T', tf / N)
-    xx_next = sim_solver.simulate(x=xx, u=uu)
-    print(f"sim test: x_next = {xx_next}")
+    # quick integrator test
+    # xx = np.array([0.0, 0.0, 0.0, 0.5, 0.0])
+    # uu = np.array([0.01])
+    # sim_solver.set('T', tf / N)
+    # xx_next = sim_solver.simulate(x=xx, u=uu)
+    # print(f"sim test: x_next = {xx_next}")
 
     # parameter vector: [vx, kappa_ref, slope_r, alpha_r_bar, Fyr_bar,
-    #                     mass, lf, lr, Iz, tau]
+    #                     mass, lf, lr, Iz]
     default_p = np.array([
         VX_NOMINAL, KAPPA_REF_NOMINAL,
         SLOPE_R_NOMINAL, ALPHA_R_BAR_NOMINAL, FYR_BAR_NOMINAL,
-        VEHICLE_MASS, VEHICLE_LF, VEHICLE_LR, VEHICLE_IZ, FYF_TAU
+        VEHICLE_MASS, VEHICLE_LF, VEHICLE_LR, VEHICLE_IZ
     ])
     params = [default_p.copy() for _ in range(N + 1)]
 
@@ -526,7 +518,7 @@ if __name__ == "__main__":
     x_lb, x_ub, u_lb, u_ub = get_bounds(N)
 
     x0 = np.array([BETA_INIT, YAW_RATE_INIT, HEADING_ERROR_INIT,
-                    LATERAL_ERROR_INIT, FYF_INIT, FYF_CMD_INIT])
+                    LATERAL_ERROR_INIT, FYF_N_INIT])
     x0[IDX_LATERAL_ERROR] = 0.5  # start with 0.5m offset
 
     for i in range(N + 1):
@@ -545,6 +537,8 @@ if __name__ == "__main__":
 
     start_time = time.perf_counter()
     status = acados_solver.solve_for_x0(x0)
+    acados_solver.print_statistics()
+    status = acados_solver.get_status()
     elapsed_time = (time.perf_counter() - start_time) * 1000
     nlp_iter = acados_solver.get_stats("nlp_iter")
     sqp_iter = acados_solver.get_stats("sqp_iter")
@@ -555,6 +549,7 @@ if __name__ == "__main__":
           f"nlp_iter: {nlp_iter}  sqp_iter: {sqp_iter}")
     print(f"x[0] = {x_sol[0]}")
     print(f"x[{N}] = {x_sol[N]}")
+    print(f"u = {u_sol}")
 
     plot_acados_results(x_sol, u_sol, N, tf, y_ref, y_ref_e)
 
