@@ -74,15 +74,15 @@ LATERAL_ERROR_INIT = 0.0
 FYF_N_INIT = 0.0               # = Fyf_physical_init / FYF_SCALE
 
 # Vehicle parameters (default values)
-VEHICLE_MASS = 1800.0          # kg
-VEHICLE_LF = 1.2               # m, CG to front axle
-VEHICLE_LR = 1.6               # m, CG to rear axle
-VEHICLE_IZ = 3000.0            # kg*m^2, yaw inertia
+VEHICLE_MASS = 2594.0          # kg
+VEHICLE_LF = 1.588               # m, CG to front axle
+VEHICLE_LR = 1.451               # m, CG to rear axle
+VEHICLE_IZ = 2500.0            # kg*m^2, yaw inertia
 
 # Nominal operating parameters
-VX_NOMINAL = 30.0              # m/s
+VX_NOMINAL = 33.39            # m/s
 KAPPA_REF_NOMINAL = 0.0        # 1/m
-SLOPE_R_NOMINAL = 8.0e4        # N/rad, rear tire cornering stiffness
+SLOPE_R_NOMINAL = 149738        # N/rad, rear tire cornering stiffness
 ALPHA_R_BAR_NOMINAL = 0.0      # rad
 FYR_BAR_NOMINAL = 0.0          # N
 
@@ -98,12 +98,12 @@ USE_STATE_REF = True
 W_BETA = 0.0
 W_YAW_RATE = 15.0
 W_HEADING_ERROR = 20.0
-W_LATERAL_ERROR = 1.5
+W_LATERAL_ERROR = 15
 # Physical weight for Fyf, auto-scaled by FYF_SCALE^2
 W_FYF_PHYSICAL = 0.0
 W_FYF_N = W_FYF_PHYSICAL / (FYF_SCALE * FYF_SCALE)
 # Physical weight for dFyf, auto-scaled by DF_SCALE^2
-W_DFYF_PHYSICAL = 1.0e4
+W_DFYF_PHYSICAL = 1.0e8
 W_DFYF_N = W_DFYF_PHYSICAL / (DF_SCALE * DF_SCALE)
 
 
@@ -177,6 +177,68 @@ def discretize_stage(phys_params, dt):
 
 
 N_PARAM_PHYS = 9   # [vx, kappa_ref, slope_r, alpha_r_bar, Fyr_bar, mass, lf, lr, Iz]
+
+
+def build_kkt_matrix(A_list, Bu_list, Q, R, Q_e, N, nx, nu, sigma=0.0):
+    """
+    Build the KKT matrix of the OCP QP, optionally with IPM barrier diagonal.
+
+    HPIPM solves at each IPM iteration:
+        [H + Σ   G^T] [Δz]     [−r_z ]
+        [G       0  ] [Δλ]  =  [−r_λ ]
+
+    where:
+        H = blkdiag(Q,R, Q,R, ..., Q,R, Q_e)   (cost Hessian)
+        G = [A_k  B_k  -I]                       (dynamics Jacobian)
+        Σ = diag(μ_i/s_i)                        (barrier term from box constraints)
+
+    Since Σ depends on the IPM iterate (not accessible from Python API),
+    sigma provides a uniform scalar approximation: Σ ≈ sigma * I.
+        sigma = 0   → equality-only KKT (lower bound on conditioning)
+        sigma > 0   → approximate first IPM iteration (e.g. sigma = 1e-2)
+
+    Returns (KKT_matrix, condition_number).
+    """
+    nz = (N + 1) * nx + N * nu
+    nc = N * nx
+    dim = nz + nc
+
+    KKT = np.zeros((dim, dim))
+
+    def x_idx(k):
+        return k * (nx + nu)
+
+    def u_idx(k):
+        return k * (nx + nu) + nx
+
+    for k in range(N):
+        ix = x_idx(k)
+        iu = u_idx(k)
+        KKT[ix:ix+nx, ix:ix+nx] = Q + sigma * np.eye(nx)
+        KKT[iu:iu+nu, iu:iu+nu] = R + sigma * np.eye(nu)
+
+    ix_N = x_idx(N)
+    KKT[ix_N:ix_N+nx, ix_N:ix_N+nx] = Q_e + sigma * np.eye(nx)
+
+    for k in range(N):
+        row = nz + k * nx
+        ix_k = x_idx(k)
+        iu_k = u_idx(k)
+        ix_k1 = x_idx(k + 1)
+
+        KKT[row:row+nx, ix_k:ix_k+nx] = A_list[k]
+        KKT[ix_k:ix_k+nx, row:row+nx] = A_list[k].T
+
+        KKT[row:row+nx, iu_k:iu_k+nu] = Bu_list[k]
+        KKT[iu_k:iu_k+nu, row:row+nx] = Bu_list[k].T
+
+        KKT[row:row+nx, ix_k1:ix_k1+nx] = -np.eye(nx)
+        KKT[ix_k1:ix_k1+nx, row:row+nx] = -np.eye(nx)
+
+    svs = np.linalg.svd(KKT, compute_uv=False)
+    cond = svs[0] / svs[svs > 1e-15][-1] if np.any(svs > 1e-15) else np.inf
+
+    return KKT, cond
 
 
 def export_esa_mpc_model():
@@ -326,12 +388,22 @@ def safe_mkdir_recursive(directory, overwrite=False):
                 print("Error while removing directory {}".format(directory))
 
 
-def set_acados_model(stage_n, tf):
+def set_acados_model(stage_n, tf, time_steps=None):
+    """
+    time_steps: optional array of length stage_n specifying per-stage dt.
+                If None, uniform dt = tf/stage_n is used.
+                If provided, tf is ignored and computed from sum(time_steps).
+    """
     os.chdir(os.path.dirname(os.path.realpath(__file__)))
     acados_models_dir = "./acados_models"
     safe_mkdir_recursive(os.path.join(os.getcwd(), acados_models_dir))
     acados_source_path = os.environ["ACADOS_SOURCE_DIR"]
     sys.path.insert(0, acados_source_path)
+
+    if time_steps is not None:
+        time_steps = np.array(time_steps, dtype=float)
+        assert len(time_steps) == stage_n
+        tf = float(np.sum(time_steps))
 
     ocp = AcadosOcp()
     model = export_esa_mpc_model()
@@ -409,8 +481,9 @@ def set_acados_model(stage_n, tf):
         VEHICLE_MASS, VEHICLE_LF, VEHICLE_LR, VEHICLE_IZ
     ])
 
+    default_dt = tf / stage_n
     if USE_ZOH:
-        ocp.parameter_values = discretize_stage(default_phys, tf / stage_n)
+        ocp.parameter_values = discretize_stage(default_phys, default_dt)
     else:
         ocp.parameter_values = default_phys
 
@@ -421,13 +494,15 @@ def set_acados_model(stage_n, tf):
     if USE_ZOH:
         ocp.solver_options.integrator_type = "DISCRETE"
     else:
-        ocp.solver_options.integrator_type = "IRK"
+        ocp.solver_options.integrator_type = "ERK"
         ocp.solver_options.sim_method_num_stages = 4
         ocp.solver_options.sim_method_num_steps = 1
     ocp.solver_options.print_level = 0
     ocp.solver_options.tol = 1e-6
     ocp.solver_options.tf = tf
     ocp.solver_options.N_horizon = stage_n
+    if time_steps is not None:
+        ocp.solver_options.time_steps = time_steps
 
     output_debug_info_ocp(ocp)
     json_file = os.path.join("./" + model.name + "_acados_ocp.json")
@@ -482,22 +557,27 @@ def get_bounds(N):
     return x_lb, x_ub, u_lb, u_ub
 
 
-def plot_acados_results(x, u, N, tf, y_ref=None, y_ref_e=None):
+def plot_acados_results(x, u, N, tf, y_ref=None, y_ref_e=None, time_steps=None):
     """
     Plot the results from Acados solver for the 5-state ESA MPC model.
 
     Args:
-        x: array (N+1, 5) - [beta, yaw_rate, delta_theta, lat_error, Fyf]
-        u: array (N, 1) - [dFyf_n]
+        x: array (N+1, 5)
+        u: array (N, 1)
         N: Number of control intervals
         tf: Final time
         y_ref: list of (N,) refs, each shape (6,)
         y_ref_e: terminal ref shape (5,)
+        time_steps: optional per-stage dt array (length N) for non-uniform grids
     """
     x = np.array(x)
     u = np.array(u)
-    t_x = np.linspace(0, tf, N + 1)
-    t_u = np.linspace(0, tf, N)
+    if time_steps is not None:
+        t_x = np.concatenate([[0.0], np.cumsum(time_steps)])
+        t_u = t_x[:-1]
+    else:
+        t_x = np.linspace(0, tf, N + 1)
+        t_u = np.linspace(0, tf, N)
 
     has_ref = y_ref is not None and y_ref_e is not None
     if has_ref:
@@ -536,7 +616,7 @@ def plot_acados_results(x, u, N, tf, y_ref=None, y_ref_e=None):
     plt.tight_layout()
 
 
-def visualize_in_cartesian(x, N, tf, vx_list, kappa_list):
+def visualize_in_cartesian(x, N, tf, vx_list, kappa_list, time_steps=None):
     """
     Visualize vehicle trajectory vs reference line in Cartesian coordinates.
 
@@ -546,9 +626,11 @@ def visualize_in_cartesian(x, N, tf, vx_list, kappa_list):
         tf: Final time
         vx_list: longitudinal velocity per step (N+1,)
         kappa_list: reference curvature per step (N+1,)
+        time_steps: optional per-stage dt array (length N) for non-uniform grids
     """
     x = np.array(x)
-    dt = tf / N
+    if time_steps is None:
+        time_steps = np.full(N, tf / N)
 
     ref_x = np.zeros(N + 1)
     ref_y = np.zeros(N + 1)
@@ -563,14 +645,15 @@ def visualize_in_cartesian(x, N, tf, vx_list, kappa_list):
     for i in range(1, N + 1):
         vx = vx_list[i - 1]
         kr = kappa_list[i - 1]
+        dt_i = time_steps[i - 1]
 
-        ref_theta[i] = ref_theta[i - 1] + vx * kr * dt
-        ref_x[i] = ref_x[i - 1] + vx * np.cos(ref_theta[i - 1]) * dt
-        ref_y[i] = ref_y[i - 1] + vx * np.sin(ref_theta[i - 1]) * dt
+        ref_theta[i] = ref_theta[i - 1] + vx * kr * dt_i
+        ref_x[i] = ref_x[i - 1] + vx * np.cos(ref_theta[i - 1]) * dt_i
+        ref_y[i] = ref_y[i - 1] + vx * np.sin(ref_theta[i - 1]) * dt_i
 
         heading = ref_theta[i - 1] + x[i - 1, IDX_HEADING_ERROR]
-        veh_x[i] = veh_x[i - 1] + vx * np.cos(heading) * dt
-        veh_y[i] = veh_y[i - 1] + vx * np.sin(heading) * dt
+        veh_x[i] = veh_x[i - 1] + vx * np.cos(heading) * dt_i
+        veh_y[i] = veh_y[i - 1] + vx * np.sin(heading) * dt_i
 
     plt.figure(figsize=(12, 6))
     plt.plot(ref_x, ref_y, 'b-', label='Reference line', linewidth=2)
@@ -588,10 +671,13 @@ def visualize_in_cartesian(x, N, tf, vx_list, kappa_list):
 if __name__ == "__main__":
 
     matplotlib.set_loglevel("warning")
-    N = 50
-    tf = 5.0
-    dt = tf / N
-    acados_solver, sim_solver = set_acados_model(N, tf)
+    N = 40
+    time_steps = np.concatenate([
+        np.full(20, 0.02),   # first 20 steps:  dt = 0.02 s
+        np.full(20, 0.2),    # last  20 steps:  dt = 0.2  s
+    ])
+    tf = float(np.sum(time_steps))  # 0.4 + 4.0 = 4.4 s
+    acados_solver, sim_solver = set_acados_model(N, tf, time_steps=time_steps)
 
     # Physical parameters: [vx, kappa_ref, slope_r, alpha_r_bar, Fyr_bar,
     #                        mass, lf, lr, Iz]
@@ -603,7 +689,8 @@ if __name__ == "__main__":
     phys_params = [default_phys.copy() for _ in range(N)]
 
     if USE_ZOH:
-        solver_params = [discretize_stage(phys_params[i], dt) for i in range(N)]
+        solver_params = [discretize_stage(phys_params[i], time_steps[i])
+                         for i in range(N)]
     else:
         solver_params = phys_params
 
@@ -645,7 +732,7 @@ if __name__ == "__main__":
         print(f"|eig|:    {np.abs(eigs)}")
         print()
     else:
-        sim_solver.set("T", dt)
+        sim_solver.set("T", time_steps[0])
         sim_solver.set("p", solver_params[0])
         x_zero = np.zeros(NX)
         u_zero = np.zeros(NU)
@@ -664,9 +751,40 @@ if __name__ == "__main__":
         print(f"|eig|:    {np.abs(eigs)}")
         print()
 
+    # Extract per-stage A_d, Bu_d for KKT analysis
+    A_list = []
+    Bu_list = []
+    if USE_ZOH:
+        for i in range(N):
+            pi = acados_solver.get(i, 'p')
+            A_list.append(pi[:NX*NX].reshape(NX, NX, order='F'))
+            Bu_list.append(pi[NX*NX:NX*NX+NX*NU].reshape(NX, NU, order='F'))
+    else:
+        for i in range(N):
+            sim_solver.set("T", time_steps[i])
+            sim_solver.set("p", solver_params[i])
+            sim_solver.set("x", np.zeros(NX))
+            sim_solver.set("u", np.zeros(NU))
+            sim_solver.solve()
+            A_list.append(sim_solver.get("Sx"))
+            Bu_list.append(sim_solver.get("Su"))
+
+    Q_cost = np.diag([W_BETA, W_YAW_RATE, W_HEADING_ERROR,
+                       W_LATERAL_ERROR, W_FYF_N])
+    R_cost = np.diag([W_DFYF_N])
+
+    _, cond_eq = build_kkt_matrix(A_list, Bu_list, Q_cost, R_cost,
+                                  Q_cost, N, NX, NU, sigma=0.0)
+    _, cond_ipm = build_kkt_matrix(A_list, Bu_list, Q_cost, R_cost,
+                                   Q_cost, N, NX, NU, sigma=1e-2)
+    print("=== KKT condition number (2-norm) ===")
+    print(f"  Σ=0   (equality-only):     cond = {cond_eq:.2e}  log10 = {np.log10(cond_eq):.1f}")
+    print(f"  Σ=0.01 (approx IPM init):  cond = {cond_ipm:.2e}  log10 = {np.log10(cond_ipm):.1f}")
+    print(f"  (cond > ~1e12 → HPIPM likely fails with MINSTEP)")
+    print()
+
     start_time = time.perf_counter()
     status = acados_solver.solve_for_x0(x0)
-    acados_solver.print_statistics()
     status = acados_solver.get_status()
     elapsed_time = (time.perf_counter() - start_time) * 1000
     nlp_iter = acados_solver.get_stats("nlp_iter")
@@ -679,10 +797,11 @@ if __name__ == "__main__":
     print(f"x[0] = {x_sol[0]}")
     print(f"x[{N}] = {x_sol[N]}")
     print(f"u = {u_sol}")
+    acados_solver.print_statistics()
 
-    plot_acados_results(x_sol, u_sol, N, tf, y_ref, y_ref_e)
+    plot_acados_results(x_sol, u_sol, N, tf, y_ref, y_ref_e, time_steps=time_steps)
 
     vx_list = [phys_params[min(i, N - 1)][0] for i in range(N + 1)]
     kappa_list = [phys_params[min(i, N - 1)][1] for i in range(N + 1)]
-    visualize_in_cartesian(x_sol, N, tf, vx_list, kappa_list)
+    visualize_in_cartesian(x_sol, N, tf, vx_list, kappa_list, time_steps=time_steps)
     plt.show()
