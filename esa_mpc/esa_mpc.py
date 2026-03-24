@@ -79,6 +79,42 @@ VEHICLE_LF = 1.588               # m, CG to front axle
 VEHICLE_LR = 1.451               # m, CG to rear axle
 VEHICLE_IZ = 2500.0            # kg*m^2, yaw inertia
 
+# Tire / gravity (used for CF_FIT secant from brush model)
+mu = 1.0
+g = 9.81
+
+
+def brush_tire_lateral_force(C_alpha, Fz, alpha):
+    alpha_threshold = math.atan(3 * mu * Fz / C_alpha)
+    tan_alpha = math.tan(alpha)
+    sec_alpha = 1.0 / math.cos(alpha)
+    sec2_alpha = sec_alpha * sec_alpha
+
+    if abs(alpha) < alpha_threshold:
+        Fy = (-C_alpha * tan_alpha + (C_alpha**2) /
+              (3.0 * mu * Fz) * abs(tan_alpha) * tan_alpha - (C_alpha**3) /
+              (27.0 * mu**2 * Fz**2) * tan_alpha**3)
+
+        dFy_dalpha = (-C_alpha * sec2_alpha + 2 * C_alpha**2 /
+                      (3.0 * mu * Fz) * abs(tan_alpha) * sec2_alpha -
+                      C_alpha**3 /
+                      (9.0 * mu**2 * Fz**2) * tan_alpha**2 * sec2_alpha)
+    else:
+        Fy = -mu * Fz * math.copysign(1.0, alpha)
+        dFy_dalpha = 0.0
+    return Fy, dFy_dalpha
+
+
+def compute_cf_fit_front_secant(C_alpha, alpha_fit):
+    """
+    Match C++: Fzf = m*g*lr/(lf+lr), BrushTireLateralForce(C,Fzf,α,&Fyf),
+    CF_FIT = Fyf / α.  Secant stiffness [N/rad]; sign follows brush Fy convention.
+    """
+    Fzf = VEHICLE_MASS * g * VEHICLE_LR / (VEHICLE_LF + VEHICLE_LR)
+    Fyf_fit, _ = brush_tire_lateral_force(C_alpha, Fzf, alpha_fit)
+    return Fyf_fit / alpha_fit
+
+
 # Nominal operating parameters
 VX_NOMINAL = 33.39            # m/s
 KAPPA_REF_NOMINAL = 0.0        # 1/m
@@ -90,9 +126,23 @@ FYR_BAR_NOMINAL = 0.0          # N
 #                      False = acados IRK (implicit Runge-Kutta)
 USE_ZOH = False
 
-ADD_INIT_CONSTRAINT = True
-ADD_BOUND_CONSTRAINT = True
 USE_STATE_REF = True
+
+# Constraint 1: Front wheel angle (linear path constraint)
+#   Geometric slip + linear tire: α_f ≈ β + (lf/vx)*yaw_rate − δ,  Fyf ≈ Cf * α_f
+#   ⇒  δ ≈ β + (lf/vx)*yaw_rate − Fyf / Cf
+#   State uses Fyf_n = Fyf / FYF_SCALE  ⇒  Fyf = FYF_SCALE * Fyf_n
+#   Cf = CF_FIT [N/rad]: secant from brush tire at ALPHA_F_FIT (see compute_cf_fit_front_secant)
+ALPHA_F_FIT = 4.0 / 180.0 * math.pi
+CF = 1.2e5
+CF_FIT = compute_cf_fit_front_secant(CF, ALPHA_F_FIT)
+DELTA_MAX = 0.05              # rad (~14 deg)
+DELTA_MIN = -DELTA_MAX
+
+# Constraint 3: Soft lateral error bounds
+#   lat_error ∈ [LATERAL_ERROR_LOWER - sl, LATERAL_ERROR_UPPER + su]
+W_SLACK_LAT_L1 = 500.0       # linear penalty (N/m per meter violation)
+W_SLACK_LAT_L2 = 0.0         # quadratic penalty
 
 # Cost weights (Bryson's rule inspired)
 W_BETA = 0.0
@@ -444,36 +494,75 @@ def set_acados_model(stage_n, tf, time_steps=None):
     ocp.cost.Vx_e = np.eye(nx)
     ocp.cost.yref_e = np.zeros(nx)
 
-    if ADD_INIT_CONSTRAINT:
-        x_lb_0 = np.array([BETA_LOWER, YAW_RATE_LOWER, HEADING_ERROR_LOWER,
-                           LATERAL_ERROR_LOWER, FYF_N_LOWER])
-        x_ub_0 = np.array([BETA_UPPER, YAW_RATE_UPPER, HEADING_ERROR_UPPER,
-                           LATERAL_ERROR_UPPER, FYF_N_UPPER])
-        ocp.constraints.lbx_0 = x_lb_0
-        ocp.constraints.ubx_0 = x_ub_0
-        ocp.constraints.idxbx_0 = np.arange(nx)
+    # ------------------------------------------------------------------
+    # Initial state x0 fixing (required by solve_for_x0)
+    #   solve_for_x0 calls set(0, "lbx", x0) internally, so idxbx_0 must
+    #   cover all nx states.
+    # ------------------------------------------------------------------
+    ocp.constraints.idxbx_0 = np.arange(nx)
+    ocp.constraints.lbx_0   = np.zeros(nx)   # placeholder, overwritten at solve time
+    ocp.constraints.ubx_0   = np.zeros(nx)
 
-    if ADD_BOUND_CONSTRAINT:
-        x_lb = np.array([BETA_LOWER, YAW_RATE_LOWER, HEADING_ERROR_LOWER,
-                         LATERAL_ERROR_LOWER, FYF_N_LOWER])
-        x_ub = np.array([BETA_UPPER, YAW_RATE_UPPER, HEADING_ERROR_UPPER,
-                         LATERAL_ERROR_UPPER, FYF_N_UPPER])
+    # ------------------------------------------------------------------
+    # Constraint 1: Front wheel angle (linear path constraint)
+    #   δ_lin = β + (lf/vx_nom)*ẏ − (FYF_SCALE/CF_FIT)*Fyf_n ∈ [DELTA_MIN, DELTA_MAX]
+    #   C*x + D*u ∈ [lg, ug]   (C constant for fixed vx_nom, CF_FIT, FYF_SCALE)
+    # ------------------------------------------------------------------
+    C_delta = np.array([[
+        1.0,
+        VEHICLE_LF / VX_NOMINAL,
+        0.0,
+        0.0,
+        -FYF_SCALE / CF_FIT,
+    ]])
+    D_delta = np.zeros((1, nu))
+    # Intermediate stages (1 .. N-1)
+    ocp.constraints.C = C_delta
+    ocp.constraints.D = D_delta
+    ocp.constraints.lg = np.array([DELTA_MIN])
+    ocp.constraints.ug = np.array([DELTA_MAX])
+    # Terminal stage N (no control column)
+    ocp.constraints.C_e = C_delta
+    ocp.constraints.lg_e = np.array([DELTA_MIN])
+    ocp.constraints.ug_e = np.array([DELTA_MAX])
 
-        ocp.constraints.lbx_0 = x_lb
-        ocp.constraints.ubx_0 = x_ub
-        ocp.constraints.idxbx_0 = np.arange(nx)
+    # ------------------------------------------------------------------
+    # Constraint 2: Control box (hard) — dFyf_n ∈ [lower, upper]
+    # ------------------------------------------------------------------
+    ocp.constraints.lbu = np.array([DFYF_N_LOWER])
+    ocp.constraints.ubu = np.array([DFYF_N_UPPER])
+    ocp.constraints.idxbu = np.array([0])
 
-        ocp.constraints.lbx = x_lb
-        ocp.constraints.ubx = x_ub
-        ocp.constraints.idxbx = np.arange(nx)
+    # ------------------------------------------------------------------
+    # Constraint 3: Soft lateral error box
+    #   lat_error ∈ [LATERAL_ERROR_LOWER - sl, LATERAL_ERROR_UPPER + su]
+    #   Hard bound + softened via slack variable s
+    # ------------------------------------------------------------------
+    ns = 1   # one slack (for lat_error)
+    # Intermediate stages
+    ocp.constraints.lbx   = np.array([LATERAL_ERROR_LOWER])
+    ocp.constraints.ubx   = np.array([LATERAL_ERROR_UPPER])
+    ocp.constraints.idxbx = np.array([IDX_LATERAL_ERROR])
+    ocp.constraints.idxsbx = np.array([0])   # soften first (only) box constraint
+    ocp.constraints.lsbx  = np.array([0.0])
+    ocp.constraints.usbx  = np.array([0.0])
+    # Terminal stage
+    ocp.constraints.lbx_e   = np.array([LATERAL_ERROR_LOWER])
+    ocp.constraints.ubx_e   = np.array([LATERAL_ERROR_UPPER])
+    ocp.constraints.idxbx_e = np.array([IDX_LATERAL_ERROR])
+    ocp.constraints.idxsbx_e = np.array([0])
+    ocp.constraints.lsbx_e  = np.array([0.0])
+    ocp.constraints.usbx_e  = np.array([0.0])
 
-        ocp.constraints.lbx_e = x_lb
-        ocp.constraints.ubx_e = x_ub
-        ocp.constraints.idxbx_e = np.arange(nx)
-
-        ocp.constraints.lbu = np.array([DFYF_N_LOWER])
-        ocp.constraints.ubu = np.array([DFYF_N_UPPER])
-        ocp.constraints.idxbu = np.array([0])
+    # Slack costs: L(s) = Zl/Zu * s^2 + zl/zu * s  (L1 penalty by default)
+    ocp.cost.Zl = W_SLACK_LAT_L2 * np.ones(ns)
+    ocp.cost.Zu = W_SLACK_LAT_L2 * np.ones(ns)
+    ocp.cost.zl = W_SLACK_LAT_L1 * np.ones(ns)
+    ocp.cost.zu = W_SLACK_LAT_L1 * np.ones(ns)
+    ocp.cost.Zl_e = W_SLACK_LAT_L2 * np.ones(ns)
+    ocp.cost.Zu_e = W_SLACK_LAT_L2 * np.ones(ns)
+    ocp.cost.zl_e = W_SLACK_LAT_L1 * np.ones(ns)
+    ocp.cost.zu_e = W_SLACK_LAT_L1 * np.ones(ns)
 
     default_phys = np.array([
         VX_NOMINAL, KAPPA_REF_NOMINAL,
@@ -500,7 +589,9 @@ def set_acados_model(stage_n, tf, time_steps=None):
     ocp.solver_options.print_level = 0
     ocp.solver_options.tol = 1e-6
     ocp.solver_options.tf = tf
+    ocp.solver_options.hpipm_mode = "SPEED_ABS"
     ocp.solver_options.N_horizon = stage_n
+    ocp.solver_options.qp_solver_cond_N = stage_n  # required for P/K/Lr access
     if time_steps is not None:
         ocp.solver_options.time_steps = time_steps
 
@@ -512,6 +603,55 @@ def set_acados_model(stage_n, tf, time_steps=None):
     if not USE_ZOH:
         sim_solver = AcadosSimSolver(ocp, json_file=json_file)
     return acados_solver, sim_solver
+
+def get_lat_error_bounds(N, time_steps):
+    """
+    Return per-stage lat_error bounds that change every second.
+
+    Bound schedule (example, modify as needed):
+      t ∈ [0,   1) s  →  [-2.0,  2.0] m
+      t ∈ [1,   2) s  →  [-3.0,  3.0] m
+      t ∈ [2,   3) s  →  [-4.0,  4.0] m
+      t ∈ [3,   4) s  →  [-5.0,  5.0] m
+      t ∈ [4, inf) s  →  [-5.0,  5.0] m  (max range)
+
+    Returns:
+        lb_list: list of length N+1, each entry is np.array([lower_bound])
+        ub_list: list of length N+1, each entry is np.array([upper_bound])
+
+    Note:
+        Stage 0 uses idxbx_0 (full x0 fix via solve_for_x0). Do **not** call
+        constraints_set(0, "lbx", ...) with these 1-D vectors — only use
+        stages i = 1 .. N.
+    """
+    # Cumulative time at each stage node 0..N
+    t_nodes = np.concatenate([[0.0], np.cumsum(time_steps)])
+
+    # Bound schedule: list of (t_start, lb, ub)
+    schedule = [
+        (0.0, 0.0,  3.5),
+        (1.0, 2.5,  3.5),
+        (2.0, 2.5,  4.0),
+        (3.0, 2.5,  5.0),
+        (4.0, 2.5,  5.0),
+    ]
+
+    def lookup(t):
+        lb, ub = schedule[-1][1], schedule[-1][2]
+        for (t_start, lo, hi) in reversed(schedule):
+            if t >= t_start:
+                lb, ub = lo, hi
+                break
+        return lb, ub
+
+    lb_list, ub_list = [], []
+    for k in range(N + 1):
+        lb, ub = lookup(t_nodes[k])
+        lb_list.append(np.array([lb]))
+        ub_list.append(np.array([ub]))
+
+    return lb_list, ub_list
+
 
 def get_reference(N):
     """Generate reference trajectory for the 5-state ESA MPC model.
@@ -535,29 +675,95 @@ def get_reference(N):
     y_ref_e[IDX_LATERAL_ERROR] = 3.0
     return y_ref, y_ref_e
 
-def get_bounds(N):
-    """Generate state/control bounds. States are physical, control is normalized."""
-    x_lb_vec = np.array([BETA_LOWER, YAW_RATE_LOWER, HEADING_ERROR_LOWER,
-                         LATERAL_ERROR_LOWER, FYF_N_LOWER])
-    x_ub_vec = np.array([BETA_UPPER, YAW_RATE_UPPER, HEADING_ERROR_UPPER,
-                         LATERAL_ERROR_UPPER, FYF_N_UPPER])
-    u_lb_vec = np.array([DFYF_N_LOWER])
-    u_ub_vec = np.array([DFYF_N_UPPER])
+def print_qp_diagnostics(acados_solver, N):
+    """
+    Print QP diagnostic information after a solve call.
 
-    x_lb = []
-    x_ub = []
-    u_lb = []
-    u_ub = []
-    for i in range(N + 1):
-        x_lb.append(x_lb_vec.copy())
-        x_ub.append(x_ub_vec.copy())
-        if i < N:
-            u_lb.append(u_lb_vec.copy())
-            u_ub.append(u_ub_vec.copy())
-    return x_lb, x_ub, u_lb, u_ub
+    Uses:
+      - acados_solver.qp_diagnostics('FULL_HESSIAN')      : per-stage H=blkdiag(R,Q) eigenvalues
+      - acados_solver.qp_diagnostics('PROJECTED_HESSIAN') : Riccati projected H + P matrices
+      - acados_solver.get_hessian_block(i)                : [[R, S^T],[S, Q]] at stage i
+      - acados_solver.get_from_qp_in(i, field)            : A,B,b,Q,R,S,P,K,Lr,...
+    """
+    np.set_printoptions(precision=4, linewidth=140, suppress=True)
+    print("=" * 65)
+    print("QP DIAGNOSTICS")
+    print("=" * 65)
+
+    # 1. Full Hessian diagnostics (H = blkdiag(R,Q) at each stage)
+    diag_full = acados_solver.qp_diagnostics('FULL_HESSIAN')
+    print(f"\n[1] Full Hessian H = blkdiag(R,Q):")
+    print(f"    min_eig_global = {diag_full['min_eigv_global']:.3e}")
+    print(f"    max_eig_global = {diag_full['max_eigv_global']:.3e}")
+    print(f"    cond_global    = {diag_full['condition_number_global']:.3e}  "
+          f"(log10 = {np.log10(max(diag_full['condition_number_global'], 1e-30)):.1f})")
+    cond_stages = np.array(diag_full['condition_number_stage'])
+    print(f"    worst stage cond: {np.max(cond_stages):.3e} at stage {np.argmax(cond_stages)}")
+
+    # 2. Projected Hessian diagnostics (Riccati R_ric + B^T P B per stage)
+    try:
+        diag_proj = acados_solver.qp_diagnostics('PROJECTED_HESSIAN')
+        print(f"\n[2] Projected Hessian (Riccati R_ric + B^T*P*B):")
+        print(f"    min_eig_global    = {diag_proj['min_eigv_global']:.3e}")
+        print(f"    max_eig_global    = {diag_proj['max_eigv_global']:.3e}")
+        print(f"    cond_global       = {diag_proj['condition_number_global']:.3e}  "
+              f"(log10 = {np.log10(max(diag_proj['condition_number_global'], 1e-30)):.1f})")
+        print(f"    min_eig_P_global  = {diag_proj['min_eigv_P_global']:.3e}")
+        print(f"    min_abs_eig_P     = {diag_proj['min_abs_eigv_P_global']:.3e}")
+    except Exception as e:
+        print(f"\n[2] Projected Hessian: not available ({e})")
+
+    # 3. Per-stage QP matrices at stages 0 and N//2
+    for stage in [0, N // 2]:
+        print(f"\n[3] QP matrices at stage {stage}:")
+        try:
+            Q_k  = acados_solver.get_from_qp_in(stage, 'Q')
+            R_k  = acados_solver.get_from_qp_in(stage, 'R')
+            S_k  = acados_solver.get_from_qp_in(stage, 'S')
+            H_k  = acados_solver.get_hessian_block(stage)
+            eigs_H = np.linalg.eigvalsh(H_k)
+            cond_H = np.max(np.abs(eigs_H)) / max(np.min(np.abs(eigs_H)), 1e-30)
+            print(f"    Q  diag = {np.diag(Q_k)}")
+            print(f"    R  diag = {np.diag(R_k)}")
+            print(f"    H  eigs = {eigs_H}  cond = {cond_H:.3e}")
+        except Exception as e:
+            print(f"    Q/R/H not available: {e}")
+
+        if stage < N:
+            try:
+                A_k = acados_solver.get_from_qp_in(stage, 'A')
+                B_k = acados_solver.get_from_qp_in(stage, 'B')
+                eigs_A = np.linalg.eigvals(A_k)
+                print(f"    A  eigs = {np.abs(eigs_A)}  (|λ|)")
+                print(f"    B  = {B_k.flatten()}")
+            except Exception as e:
+                print(f"    A/B not available: {e}")
+
+        try:
+            P_k   = acados_solver.get_from_qp_in(stage, 'P')
+            eigs_P = np.linalg.eigvalsh(P_k)
+            cond_P = np.max(np.abs(eigs_P)) / max(np.min(np.abs(eigs_P)), 1e-30)
+            print(f"    P  eigs = {eigs_P}  cond = {cond_P:.3e}")
+        except Exception as e:
+            print(f"    P not available at stage {stage}: {e}")
+
+    print("=" * 65)
 
 
-def plot_acados_results(x, u, N, tf, y_ref=None, y_ref_e=None, time_steps=None):
+def plot_acados_results(
+    x,
+    u,
+    N,
+    tf,
+    y_ref=None,
+    y_ref_e=None,
+    time_steps=None,
+    lat_lb_list=None,
+    lat_ub_list=None,
+    dfyf_lb=None,
+    dfyf_ub=None,
+    plot_delta_figure=True,
+):
     """
     Plot the results from Acados solver for the 5-state ESA MPC model.
 
@@ -569,6 +775,10 @@ def plot_acados_results(x, u, N, tf, y_ref=None, y_ref_e=None, time_steps=None):
         y_ref: list of (N,) refs, each shape (6,)
         y_ref_e: terminal ref shape (5,)
         time_steps: optional per-stage dt array (length N) for non-uniform grids
+        lat_lb_list, lat_ub_list: optional list length N+1 of 1-D arrays; lat_error
+            bounds vs node time (step plot, same schedule as get_lat_error_bounds).
+        dfyf_lb, dfyf_ub: optional scalars; dFyf_n hard box (horizontal band on control plot).
+        plot_delta_figure: if True, second figure: δ_lin vs DELTA_* (same linear form as ocp.constraints.C).
     """
     x = np.array(x)
     u = np.array(u)
@@ -583,6 +793,16 @@ def plot_acados_results(x, u, N, tf, y_ref=None, y_ref_e=None, time_steps=None):
     if has_ref:
         yr = np.array(y_ref)
         yre = np.array(y_ref_e)
+
+    has_lat_bounds = (
+        lat_lb_list is not None
+        and lat_ub_list is not None
+        and len(lat_lb_list) == N + 1
+        and len(lat_ub_list) == N + 1
+    )
+    if has_lat_bounds:
+        lat_lb = np.array([float(np.asarray(lb).ravel()[0]) for lb in lat_lb_list])
+        lat_ub = np.array([float(np.asarray(ub).ravel()[0]) for ub in lat_ub_list])
 
     state_labels = [
         (IDX_BETA, "beta (rad)", "Sideslip Angle"),
@@ -599,6 +819,9 @@ def plot_acados_results(x, u, N, tf, y_ref=None, y_ref_e=None, time_steps=None):
         if has_ref:
             ref_vals = np.concatenate([yr[:, idx], [yre[idx]]])
             ax.step(t_x, ref_vals, 'm--', linewidth=1.2, where='post', label='ref')
+        if idx == IDX_LATERAL_ERROR and has_lat_bounds:
+            ax.step(t_x, lat_lb, 'g--', linewidth=1.2, where='post', label='lat lb')
+            ax.step(t_x, lat_ub, 'r--', linewidth=1.2, where='post', label='lat ub')
         ax.set_ylabel(ylabel)
         ax.set_title(title)
         ax.legend()
@@ -607,6 +830,17 @@ def plot_acados_results(x, u, N, tf, y_ref=None, y_ref_e=None, time_steps=None):
     axes[-1].step(t_u, u[:, 0], 'b-', linewidth=2, where='post', label='dFyf_n')
     if has_ref:
         axes[-1].step(t_u, yr[:, -1], 'm--', linewidth=1.2, where='post', label='ref')
+    if dfyf_lb is not None and dfyf_ub is not None:
+        axes[-1].fill_between(
+            [t_x[0], t_x[-1]],
+            dfyf_lb,
+            dfyf_ub,
+            alpha=0.2,
+            color='gray',
+            label='dFyf box',
+        )
+        axes[-1].axhline(dfyf_lb, color='g', linestyle='--', linewidth=1.0)
+        axes[-1].axhline(dfyf_ub, color='r', linestyle='--', linewidth=1.0)
     axes[-1].set_xlabel('Time (s)')
     axes[-1].set_ylabel('dFyf_n (normalized)')
     axes[-1].set_title('Control: dFyf_n (x DF_SCALE = physical N/s)')
@@ -614,6 +848,40 @@ def plot_acados_results(x, u, N, tf, y_ref=None, y_ref_e=None, time_steps=None):
     axes[-1].grid(True)
 
     plt.tight_layout()
+
+    if plot_delta_figure:
+        lf_over_vx = VEHICLE_LF / VX_NOMINAL
+        delta_traj = (
+            x[:, IDX_BETA]
+            + lf_over_vx * x[:, IDX_YAW_RATE]
+            - (FYF_SCALE / CF_FIT) * x[:, IDX_FYF]
+        )
+        fig2, ax_d = plt.subplots(1, 1, figsize=(10, 4))
+        ax_d.fill_between(
+            t_x,
+            DELTA_MIN,
+            DELTA_MAX,
+            alpha=0.15,
+            color='gray',
+            label='δ linear constraint band',
+        )
+        ax_d.plot(
+            t_x,
+            delta_traj,
+            'b-',
+            linewidth=2,
+            label=r'$\delta_{\mathrm{lin}}$ = β + (lf/v$_x$)·ẏ − F$_{yf}$/C$_f$',
+        )
+        ax_d.axhline(DELTA_MIN, color='g', linestyle='--', linewidth=1.2, label='DELTA_MIN')
+        ax_d.axhline(DELTA_MAX, color='r', linestyle='--', linewidth=1.2, label='DELTA_MAX')
+        ax_d.set_xlabel('Time (s)')
+        ax_d.set_ylabel('δ (rad)')
+        ax_d.set_title(
+            r'$\delta_{\mathrm{lin}}$ = β + (lf/v$_x$)·ẏ − F$_{yf}$/C$_f$  (C$_f$=CF_FIT) vs bounds'
+        )
+        ax_d.legend(loc='best')
+        ax_d.grid(True)
+        plt.tight_layout()
 
 
 def visualize_in_cartesian(x, N, tf, vx_list, kappa_list, time_steps=None):
@@ -695,28 +963,31 @@ if __name__ == "__main__":
         solver_params = phys_params
 
     y_ref, y_ref_e = get_reference(N)
-    x_lb, x_ub, u_lb, u_ub = get_bounds(N)
 
     x0 = np.array([BETA_INIT, YAW_RATE_INIT, HEADING_ERROR_INIT,
                     LATERAL_ERROR_INIT, FYF_N_INIT])
     x0[IDX_LATERAL_ERROR] = 0.5  # start with 0.5m offset
 
+    # Time-varying lat_error bounds (change per second along horizon)
+    lat_lb_list, lat_ub_list = get_lat_error_bounds(N, time_steps)
+
+    # Set params, refs, and time-varying lat_error bounds.
+    # Skip stage 0: idxbx_0 has nx entries (x0 equality); 1-D lat bounds would
+    # corrupt solve_for_x0. Stages 1..N-1 use idxbx=[lat_error]; terminal N uses idxbx_e.
     for i in range(N):
         acados_solver.set(i, 'p', solver_params[i])
-        if ADD_BOUND_CONSTRAINT:
-            acados_solver.constraints_set(i, "lbu", u_lb[i])
-            acados_solver.constraints_set(i, "ubu", u_ub[i])
-            acados_solver.constraints_set(i, "lbx", x_lb[i])
-            acados_solver.constraints_set(i, "ubx", x_ub[i])
         if USE_STATE_REF:
             acados_solver.cost_set(i, "yref", y_ref[i])
+        if i >= 1:
+            acados_solver.constraints_set(i, "lbx", lat_lb_list[i])
+            acados_solver.constraints_set(i, "ubx", lat_ub_list[i])
     acados_solver.set(N, 'p', solver_params[-1])
-    if ADD_BOUND_CONSTRAINT:
-        acados_solver.constraints_set(N, "lbx", x_lb[N])
-        acados_solver.constraints_set(N, "ubx", x_ub[N])
     if USE_STATE_REF:
         acados_solver.cost_set(N, "yref", y_ref_e)
+    acados_solver.constraints_set(N, "lbx", lat_lb_list[N])
+    acados_solver.constraints_set(N, "ubx", lat_ub_list[N])
 
+    # Pre-solve discrete matrix print (stage 0)
     np.set_printoptions(precision=6, linewidth=120, suppress=True)
     if USE_ZOH:
         p0 = acados_solver.get(0, 'p')
@@ -724,36 +995,31 @@ if __name__ == "__main__":
         Bu_d = p0[NX*NX:NX*NX+NX*NU].reshape(NX, NU, order='F')
         Bd_d = p0[NX*NX+NX*NU:]
         print("=== Stage 0 discrete matrices (ZOH) ===")
-        print(f"A_d ({NX}x{NX}):\n{A_d}")
-        print(f"Bu_d ({NX}x{NU}):\n{Bu_d}")
-        print(f"Bd_d ({NX}x1):\n{Bd_d}")
+        print(f"A_d:\n{A_d}")
+        print(f"Bu_d: {Bu_d.flatten()}")
+        print(f"Bd_d: {Bd_d}")
         eigs = np.linalg.eigvals(A_d)
-        print(f"eig(A_d): {eigs}")
-        print(f"|eig|:    {np.abs(eigs)}")
+        print(f"eig(A_d) |λ|: {np.abs(eigs)}")
         print()
     else:
         sim_solver.set("T", time_steps[0])
         sim_solver.set("p", solver_params[0])
-        x_zero = np.zeros(NX)
-        u_zero = np.zeros(NU)
-        sim_solver.set("x", x_zero)
-        sim_solver.set("u", u_zero)
+        sim_solver.set("x", np.zeros(NX))
+        sim_solver.set("u", np.zeros(NU))
         sim_solver.solve()
-        Bd_d = sim_solver.get("x")
-        A_d = sim_solver.get("Sx")
+        A_d  = sim_solver.get("Sx")
         Bu_d = sim_solver.get("Su")
+        Bd_d = sim_solver.get("x")
         print("=== Stage 0 discrete matrices (IRK sensitivities) ===")
-        print(f"A_d = Sx ({NX}x{NX}):\n{A_d}")
-        print(f"Bu_d = Su ({NX}x{NU}):\n{Bu_d}")
-        print(f"Bd_d = f(0,0) ({NX}x1):\n{Bd_d}")
+        print(f"A_d:\n{A_d}")
+        print(f"Bu_d: {Bu_d.flatten()}")
+        print(f"Bd_d: {Bd_d}")
         eigs = np.linalg.eigvals(A_d)
-        print(f"eig(A_d): {eigs}")
-        print(f"|eig|:    {np.abs(eigs)}")
+        print(f"eig(A_d) |λ|: {np.abs(eigs)}")
         print()
 
-    # Extract per-stage A_d, Bu_d for KKT analysis
-    A_list = []
-    Bu_list = []
+    # Pre-solve KKT condition estimate (from discrete matrices)
+    A_list, Bu_list = [], []
     if USE_ZOH:
         for i in range(N):
             pi = acados_solver.get(i, 'p')
@@ -769,37 +1035,48 @@ if __name__ == "__main__":
             A_list.append(sim_solver.get("Sx"))
             Bu_list.append(sim_solver.get("Su"))
 
-    Q_cost = np.diag([W_BETA, W_YAW_RATE, W_HEADING_ERROR,
-                       W_LATERAL_ERROR, W_FYF_N])
+    Q_cost = np.diag([W_BETA, W_YAW_RATE, W_HEADING_ERROR, W_LATERAL_ERROR, W_FYF_N])
     R_cost = np.diag([W_DFYF_N])
-
-    _, cond_eq = build_kkt_matrix(A_list, Bu_list, Q_cost, R_cost,
-                                  Q_cost, N, NX, NU, sigma=0.0)
-    _, cond_ipm = build_kkt_matrix(A_list, Bu_list, Q_cost, R_cost,
-                                   Q_cost, N, NX, NU, sigma=1e-2)
-    print("=== KKT condition number (2-norm) ===")
-    print(f"  Σ=0   (equality-only):     cond = {cond_eq:.2e}  log10 = {np.log10(cond_eq):.1f}")
-    print(f"  Σ=0.01 (approx IPM init):  cond = {cond_ipm:.2e}  log10 = {np.log10(cond_ipm):.1f}")
-    print(f"  (cond > ~1e12 → HPIPM likely fails with MINSTEP)")
+    _, cond_eq  = build_kkt_matrix(A_list, Bu_list, Q_cost, R_cost, Q_cost, N, NX, NU, sigma=0.0)
+    _, cond_ipm = build_kkt_matrix(A_list, Bu_list, Q_cost, R_cost, Q_cost, N, NX, NU, sigma=1e-2)
+    print("=== Pre-solve KKT condition (equality-only model) ===")
+    print(f"  Σ=0    (equality-only): cond = {cond_eq:.2e}  log10 = {np.log10(cond_eq):.1f}")
+    print(f"  Σ=0.01 (approx IPM):   cond = {cond_ipm:.2e}  log10 = {np.log10(cond_ipm):.1f}")
     print()
 
+    # Solve
     start_time = time.perf_counter()
     status = acados_solver.solve_for_x0(x0)
     status = acados_solver.get_status()
     elapsed_time = (time.perf_counter() - start_time) * 1000
     nlp_iter = acados_solver.get_stats("nlp_iter")
     sqp_iter = acados_solver.get_stats("sqp_iter")
+    print(f"Elapsed: {elapsed_time:.2f} ms  status: {status}  "
+          f"nlp_iter: {nlp_iter}  sqp_iter: {sqp_iter}")
+
+    # Post-solve QP diagnostics (uses actual QP from last solve)
+    print_qp_diagnostics(acados_solver, N)
 
     x_sol = [acados_solver.get(i, "x") for i in range(N + 1)]
     u_sol = [acados_solver.get(i, "u") for i in range(N)]
-    print(f"Elapsed: {elapsed_time:.2f} ms  status: {status}  "
-          f"nlp_iter: {nlp_iter}  sqp_iter: {sqp_iter}")
     print(f"x[0] = {x_sol[0]}")
     print(f"x[{N}] = {x_sol[N]}")
-    print(f"u = {u_sol}")
     acados_solver.print_statistics()
 
-    plot_acados_results(x_sol, u_sol, N, tf, y_ref, y_ref_e, time_steps=time_steps)
+    plot_acados_results(
+        x_sol,
+        u_sol,
+        N,
+        tf,
+        y_ref,
+        y_ref_e,
+        time_steps=time_steps,
+        lat_lb_list=lat_lb_list,
+        lat_ub_list=lat_ub_list,
+        dfyf_lb=DFYF_N_LOWER,
+        dfyf_ub=DFYF_N_UPPER,
+        plot_delta_figure=True,
+    )
 
     vx_list = [phys_params[min(i, N - 1)][0] for i in range(N + 1)]
     kappa_list = [phys_params[min(i, N - 1)][1] for i in range(N + 1)]
