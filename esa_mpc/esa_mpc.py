@@ -105,7 +105,7 @@ DELTA_MIN = -DELTA_MAX
 # Constraint 3: Soft lateral error bounds
 #   lat_error ∈ [LATERAL_ERROR_LOWER - sl, LATERAL_ERROR_UPPER + su]
 W_SLACK_LAT_L1 = 500.0       # linear penalty (N/m per meter violation)
-W_SLACK_LAT_L2 = 0.0         # quadratic penalty
+W_SLACK_LAT_L2 = 100.0         # quadratic penalty
 
 # Cost weights (Bryson's rule inspired)
 W_BETA = 1e-2
@@ -113,11 +113,11 @@ W_YAW_RATE = 15.0
 W_HEADING_ERROR = 20.0
 W_LATERAL_ERROR = 15
 # Physical weight for Fyf, auto-scaled by FYF_SCALE^2
-W_FYF_PHYSICAL = 1e6
-W_FYF_N = W_FYF_PHYSICAL / (FYF_SCALE * FYF_SCALE)
+W_FYF_PHYSICAL = 1e-10
+W_FYF_N = W_FYF_PHYSICAL * (FYF_SCALE * FYF_SCALE)
 # Physical weight for dFyf, auto-scaled by DF_SCALE^2
-W_DFYF_PHYSICAL = 1.0e8
-W_DFYF_N = W_DFYF_PHYSICAL / (DF_SCALE * DF_SCALE)
+W_DFYF_PHYSICAL = 1.0e-8
+W_DFYF_N = W_DFYF_PHYSICAL * (DF_SCALE * DF_SCALE)
 
 
 NX = 5
