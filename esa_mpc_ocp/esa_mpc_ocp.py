@@ -304,7 +304,7 @@ def export_esa_mpc_model():
                         mass, lf, lr, Iz]  (total 9)
         Dynamics: xdot = f_expl(x, u, p)
     """
-    model_name = "esa_mpc"
+    model_name = "esa_mpc_ocp"
     nx = NX
     nu = NU
 
@@ -577,7 +577,8 @@ def set_acados_model(stage_n, tf, time_steps=None):
         ocp.parameter_values = default_phys
 
     # solver settings
-    ocp.solver_options.qp_solver = "FULL_CONDENSING_HPIPM"
+    ocp.solver_options.qp_solver = "PARTIAL_CONDENSING_HPIPM"
+    # ocp.solver_options.qp_solver = "FULL_CONDENSING_HPIPM"
     ocp.solver_options.nlp_solver_type = "SQP_RTI"
     ocp.solver_options.hessian_approx = "GAUSS_NEWTON"
     if USE_ZOH:
@@ -589,10 +590,11 @@ def set_acados_model(stage_n, tf, time_steps=None):
     ocp.solver_options.print_level = 0
     ocp.solver_options.tol = 1e-6
     ocp.solver_options.tf = tf
-    ocp.solver_options.hpipm_mode = "SPEED_ABS"
+    ocp.solver_options.hpipm_mode = "BALANCE"
+    # ocp.solver_options.hpipm_mode = "SPEED_ABS"
     ocp.solver_options.qp_solver_warm_start = 1
     ocp.solver_options.nlp_solver_warm_start_first_qp = True
-    ocp.solver_options.nlp_solver_ext_qp_res = 1
+    # ocp.solver_options.nlp_solver_ext_qp_res = 1
     ocp.solver_options.N_horizon = stage_n
     ocp.solver_options.qp_solver_cond_N = stage_n
     if time_steps is not None:
@@ -1299,7 +1301,7 @@ def run_benchmark(n_calls=1, plot_call_idx=0):
         dfyf_n_upper = DFYF_N_UPPER * (1.0 + rng.uniform(-0.1, 0.1))
 
         # --- 6. Solve ---
-        print_diagnostics = (k == plot_call_idx)
+        print_diagnostics = False
         res = run_single_solve(print_diagnostics,
             acados_solver, sim_solver, N, ts, x0, phys_params,
             y_ref, y_ref_e, lat_lb_list, lat_ub_list,
@@ -1435,5 +1437,5 @@ def run_benchmark(n_calls=1, plot_call_idx=0):
 if __name__ == "__main__":
 
     matplotlib.set_loglevel("warning")
-    results = run_benchmark(n_calls=1, plot_call_idx=0)
+    results = run_benchmark(n_calls=1000, plot_call_idx=0)
     plt.show()
