@@ -738,7 +738,7 @@ def print_qp_diagnostics(acados_solver, N):
         print(f"\n[2] Projected Hessian: not available ({e})")
 
     # 3. Per-stage QP matrices at stages 0 and N//2
-    for stage in [0, N // 2]:
+    for stage in range(0, N+1, 10):
         print(f"\n[3] QP matrices at stage {stage}:")
         try:
             Q_k = acados_solver.get_from_qp_in(stage, "Q")
