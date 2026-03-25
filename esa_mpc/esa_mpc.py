@@ -1096,7 +1096,7 @@ def print_qp_residual_report(acados_solver, N, qp_res, nlp_res):
     print("=" * 70 + "\n")
 
 
-def run_single_solve(acados_solver, sim_solver, N, time_steps, x0, phys_params,
+def run_single_solve(print_diagnostics, acados_solver, sim_solver, N, time_steps, x0, phys_params,
                      y_ref, y_ref_e, lat_lb_list, lat_ub_list,
                      delta_min, delta_max, dfyf_n_lower, dfyf_n_upper):
     """
@@ -1168,9 +1168,9 @@ def run_single_solve(acados_solver, sim_solver, N, time_steps, x0, phys_params,
         nlp_res = {"stat": r[0], "eq": r[1], "ineq": r[2], "comp": r[3]}
     except Exception:
         pass
-
-    if status != 0:
+    if print_diagnostics:
         print_qp_residual_report(acados_solver, N, qp_res, nlp_res)
+        print_qp_diagnostics(acados_solver, N)
 
     return {
         "status": status,
@@ -1198,7 +1198,7 @@ def run_single_solve(acados_solver, sim_solver, N, time_steps, x0, phys_params,
     }
 
 
-def run_benchmark(n_calls=100, plot_call_idx=0):
+def run_benchmark(n_calls=1, plot_call_idx=0):
     """
     Run the ESA MPC solver n_calls times with randomized inputs.
 
@@ -1299,7 +1299,8 @@ def run_benchmark(n_calls=100, plot_call_idx=0):
         dfyf_n_upper = DFYF_N_UPPER * (1.0 + rng.uniform(-0.1, 0.1))
 
         # --- 6. Solve ---
-        res = run_single_solve(
+        print_diagnostics = (k == plot_call_idx)
+        res = run_single_solve(print_diagnostics,
             acados_solver, sim_solver, N, ts, x0, phys_params,
             y_ref, y_ref_e, lat_lb_list, lat_ub_list,
             delta_min, delta_max, dfyf_n_lower, dfyf_n_upper,
@@ -1434,5 +1435,5 @@ def run_benchmark(n_calls=100, plot_call_idx=0):
 if __name__ == "__main__":
 
     matplotlib.set_loglevel("warning")
-    results = run_benchmark(n_calls=1000, plot_call_idx=610)
+    results = run_benchmark(n_calls=1, plot_call_idx=0)
     plt.show()
