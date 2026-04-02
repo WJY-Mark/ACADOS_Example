@@ -37,9 +37,9 @@
 # model
 MODEL_SRC=
 
-MODEL_SRC+= spline_ocp_model/spline_ocp_expl_ode_fun.c
-MODEL_SRC+= spline_ocp_model/spline_ocp_expl_vde_forw.c
-MODEL_SRC+= spline_ocp_model/spline_ocp_expl_vde_adj.c
+MODEL_SRC+= esa_mpc_ocp_model/esa_mpc_ocp_expl_ode_fun.c
+MODEL_SRC+= esa_mpc_ocp_model/esa_mpc_ocp_expl_vde_forw.c
+MODEL_SRC+= esa_mpc_ocp_model/esa_mpc_ocp_expl_vde_adj.c
 
 MODEL_OBJ := $(MODEL_SRC:.c=.o)
 # optimal control problem - mostly CasADi exports
@@ -47,19 +47,19 @@ OCP_SRC=
 
 
 
-OCP_SRC+= acados_solver_spline_ocp.c
+OCP_SRC+= acados_solver_esa_mpc_ocp.c
 
 OCP_OBJ := $(OCP_SRC:.c=.o)
 # for sim solver
-SIM_SRC= acados_sim_solver_spline_ocp.c
+SIM_SRC= acados_sim_solver_esa_mpc_ocp.c
 SIM_OBJ := $(SIM_SRC:.c=.o)
 
 # for target example_sim
-EX_SIM_SRC= main_sim_spline_ocp.c
+EX_SIM_SRC= main_sim_esa_mpc_ocp.c
 EX_SIM_OBJ := $(EX_SIM_SRC:.c=.o)
 EX_SIM_EXE := $(EX_SIM_SRC:.c=)
 # for target example
-EX_SRC= main_spline_ocp.c
+EX_SRC= main_esa_mpc_ocp.c
 EX_OBJ := $(EX_SRC:.c=.o)
 EX_EXE := $(EX_SRC:.c=)
 
@@ -101,8 +101,8 @@ LDLIBS+= -lm
 LDLIBS+= 
 
 # libraries
-LIBACADOS_SOLVER=libacados_solver_spline_ocp.so
-LIBACADOS_OCP_SOLVER=libacados_ocp_solver_spline_ocp.so
+LIBACADOS_SOLVER=libacados_solver_esa_mpc_ocp.so
+LIBACADOS_OCP_SOLVER=libacados_ocp_solver_esa_mpc_ocp.so
 LIBACADOS_SIM_SOLVER=lib$(SIM_SRC:.c=.so)
 
 # virtual targets
@@ -134,7 +134,7 @@ ocp_cython_c: ocp_shared_lib
 	-o acados_ocp_solver_pyx.c \
 	-I $(INCLUDE_PATH)/../interfaces/acados_template/acados_template \
 	$(INCLUDE_PATH)/../interfaces/acados_template/acados_template/acados_ocp_solver_pyx.pyx \
-	-I /home/wangjunyang/ACADOS_Example/spline/c_generated_code \
+	-I /home/wangjunyang/ACADOS_Example/esa_mpc_ocp/c_generated_code \
 
 ocp_cython_o: ocp_cython_c
 	$(CC) $(ACADOS_FLAGS) -c -O2 \
@@ -153,7 +153,7 @@ ocp_cython: ocp_cython_o
 	-o acados_ocp_solver_pyx.so \
 	-Wl,-rpath=$(LIB_PATH) \
 	acados_ocp_solver_pyx.o \
-	$(abspath .)/libacados_ocp_solver_spline_ocp.so \
+	$(abspath .)/libacados_ocp_solver_esa_mpc_ocp.so \
 	$(LDFLAGS) $(LDLIBS)
 
 
@@ -163,7 +163,7 @@ sim_cython_c: sim_shared_lib
 	-o acados_sim_solver_pyx.c \
 	-I $(INCLUDE_PATH)/../interfaces/acados_template/acados_template \
 	$(INCLUDE_PATH)/../interfaces/acados_template/acados_template/acados_sim_solver_pyx.pyx \
-	-I /home/wangjunyang/ACADOS_Example/spline/c_generated_code \
+	-I /home/wangjunyang/ACADOS_Example/esa_mpc_ocp/c_generated_code \
 
 sim_cython_o: sim_cython_c
 	$(CC) $(ACADOS_FLAGS) -c -O2 \
@@ -182,7 +182,7 @@ sim_cython: sim_cython_o
 	-o acados_sim_solver_pyx.so \
 	-Wl,-rpath=$(LIB_PATH) \
 	acados_sim_solver_pyx.o \
-	$(abspath .)/libacados_sim_solver_spline_ocp.so \
+	$(abspath .)/libacados_sim_solver_esa_mpc_ocp.so \
 	$(LDFLAGS) $(LDLIBS)
 
 clean:
@@ -194,13 +194,13 @@ clean_ocp_shared_lib:
 	$(RM) $(OCP_OBJ)
 
 clean_ocp_cython:
-	$(RM) libacados_ocp_solver_spline_ocp.so
-	$(RM) acados_solver_spline_ocp.o
+	$(RM) libacados_ocp_solver_esa_mpc_ocp.so
+	$(RM) acados_solver_esa_mpc_ocp.o
 	$(RM) acados_ocp_solver_pyx.so
 	$(RM) acados_ocp_solver_pyx.o
 
 clean_sim_cython:
-	$(RM) libacados_sim_solver_spline_ocp.so
-	$(RM) acados_sim_solver_spline_ocp.o
+	$(RM) libacados_sim_solver_esa_mpc_ocp.so
+	$(RM) acados_sim_solver_esa_mpc_ocp.o
 	$(RM) acados_sim_solver_pyx.so
 	$(RM) acados_sim_solver_pyx.o

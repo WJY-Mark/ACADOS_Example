@@ -99,6 +99,7 @@ typedef struct spline_ocp_solver_capsule
     // dynamics
 
     external_function_external_param_casadi *expl_vde_forw;
+    external_function_external_param_casadi *expl_vde_forw_p;
     external_function_external_param_casadi *expl_ode_fun;
     external_function_external_param_casadi *expl_vde_adj;
 
@@ -151,19 +152,11 @@ ACADOS_SYMBOL_EXPORT int spline_ocp_acados_set_p_global_and_precompute_dependenc
 ACADOS_SYMBOL_EXPORT int spline_ocp_acados_solve(spline_ocp_solver_capsule * capsule);
 ACADOS_SYMBOL_EXPORT int spline_ocp_acados_setup_qp_matrices_and_factorize(spline_ocp_solver_capsule* capsule);
 
-ACADOS_SYMBOL_EXPORT void spline_ocp_acados_batch_solve(spline_ocp_solver_capsule ** capsules, int * status_out, int N_batch);
-
-ACADOS_SYMBOL_EXPORT void spline_ocp_acados_batch_set_flat(spline_ocp_solver_capsule ** capsules, const char *field, double *data, int N_data, int N_batch);
-ACADOS_SYMBOL_EXPORT void spline_ocp_acados_batch_get_flat(spline_ocp_solver_capsule ** capsules, const char *field, double *data, int N_data, int N_batch);
-
-ACADOS_SYMBOL_EXPORT void spline_ocp_acados_batch_eval_solution_sens_adj_p(spline_ocp_solver_capsule ** capsules, const char *field, int stage, double *out, int offset, int N_batch);
-ACADOS_SYMBOL_EXPORT void spline_ocp_acados_batch_eval_params_jac(spline_ocp_solver_capsule ** capsules, int N_batch);
 
 
 ACADOS_SYMBOL_EXPORT int spline_ocp_acados_free(spline_ocp_solver_capsule * capsule);
 ACADOS_SYMBOL_EXPORT void spline_ocp_acados_print_stats(spline_ocp_solver_capsule * capsule);
 ACADOS_SYMBOL_EXPORT int spline_ocp_acados_custom_update(spline_ocp_solver_capsule* capsule, double* data, int data_len);
-
 
 ACADOS_SYMBOL_EXPORT ocp_nlp_in *spline_ocp_acados_get_nlp_in(spline_ocp_solver_capsule * capsule);
 ACADOS_SYMBOL_EXPORT ocp_nlp_out *spline_ocp_acados_get_nlp_out(spline_ocp_solver_capsule * capsule);

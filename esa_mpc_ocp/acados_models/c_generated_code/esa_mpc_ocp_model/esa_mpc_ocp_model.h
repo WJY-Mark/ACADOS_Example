@@ -28,8 +28,8 @@
  * POSSIBILITY OF SUCH DAMAGE.;
  */
 
-#ifndef spline_ocp_MODEL
-#define spline_ocp_MODEL
+#ifndef esa_mpc_ocp_MODEL
+#define esa_mpc_ocp_MODEL
 
 #ifdef __cplusplus
 extern "C" {
@@ -39,31 +39,31 @@ extern "C" {
 /* explicit ODE */
 
 // explicit ODE
-int spline_ocp_expl_ode_fun(const real_t** arg, real_t** res, int* iw, real_t* w, void *mem);
-int spline_ocp_expl_ode_fun_work(int *, int *, int *, int *);
-const int *spline_ocp_expl_ode_fun_sparsity_in(int);
-const int *spline_ocp_expl_ode_fun_sparsity_out(int);
-int spline_ocp_expl_ode_fun_n_in(void);
-int spline_ocp_expl_ode_fun_n_out(void);
+int esa_mpc_ocp_expl_ode_fun(const real_t** arg, real_t** res, int* iw, real_t* w, void *mem);
+int esa_mpc_ocp_expl_ode_fun_work(int *, int *, int *, int *);
+const int *esa_mpc_ocp_expl_ode_fun_sparsity_in(int);
+const int *esa_mpc_ocp_expl_ode_fun_sparsity_out(int);
+int esa_mpc_ocp_expl_ode_fun_n_in(void);
+int esa_mpc_ocp_expl_ode_fun_n_out(void);
 
 // explicit forward VDE
-int spline_ocp_expl_vde_forw(const real_t** arg, real_t** res, int* iw, real_t* w, void *mem);
-int spline_ocp_expl_vde_forw_work(int *, int *, int *, int *);
-const int *spline_ocp_expl_vde_forw_sparsity_in(int);
-const int *spline_ocp_expl_vde_forw_sparsity_out(int);
-int spline_ocp_expl_vde_forw_n_in(void);
-int spline_ocp_expl_vde_forw_n_out(void);
+int esa_mpc_ocp_expl_vde_forw(const real_t** arg, real_t** res, int* iw, real_t* w, void *mem);
+int esa_mpc_ocp_expl_vde_forw_work(int *, int *, int *, int *);
+const int *esa_mpc_ocp_expl_vde_forw_sparsity_in(int);
+const int *esa_mpc_ocp_expl_vde_forw_sparsity_out(int);
+int esa_mpc_ocp_expl_vde_forw_n_in(void);
+int esa_mpc_ocp_expl_vde_forw_n_out(void);
 
 // explicit param-direction forward VDE
 
 
 // explicit adjoint VDE
-int spline_ocp_expl_vde_adj(const real_t** arg, real_t** res, int* iw, real_t* w, void *mem);
-int spline_ocp_expl_vde_adj_work(int *, int *, int *, int *);
-const int *spline_ocp_expl_vde_adj_sparsity_in(int);
-const int *spline_ocp_expl_vde_adj_sparsity_out(int);
-int spline_ocp_expl_vde_adj_n_in(void);
-int spline_ocp_expl_vde_adj_n_out(void);
+int esa_mpc_ocp_expl_vde_adj(const real_t** arg, real_t** res, int* iw, real_t* w, void *mem);
+int esa_mpc_ocp_expl_vde_adj_work(int *, int *, int *, int *);
+const int *esa_mpc_ocp_expl_vde_adj_sparsity_in(int);
+const int *esa_mpc_ocp_expl_vde_adj_sparsity_out(int);
+int esa_mpc_ocp_expl_vde_adj_n_in(void);
+int esa_mpc_ocp_expl_vde_adj_n_out(void);
 
 
 
@@ -71,4 +71,4 @@ int spline_ocp_expl_vde_adj_n_out(void);
 } /* extern "C" */
 #endif
 
-#endif  // spline_ocp_MODEL
+#endif  // esa_mpc_ocp_MODEL

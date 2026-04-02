@@ -127,8 +127,8 @@ class SplineOcpOpt(object):
         os.chdir(os.path.dirname(os.path.realpath(__file__)))
         self.acados_models_dir = "./acados_models"
         safe_mkdir_recursive(os.path.join(os.getcwd(), self.acados_models_dir))
-        acados_source_path = os.environ["ACADOS_SOURCE_DIR"]
-        sys.path.insert(0, acados_source_path)
+        # acados_source_path = os.environ["ACADOS_SOURCE_DIR"]
+        # sys.path.insert(0, acados_source_path)
 
         # create OCP
         ocp = AcadosOcp()
@@ -139,8 +139,8 @@ class SplineOcpOpt(object):
         ocp.dims.ny_e = 0  # not set for now
         ocp.dims.nbx = ocp.dims.nx  # number of state bounds
         ocp.dims.nbu = ocp.dims.nu  # number of control bounds
-        ocp.acados_include_path = acados_source_path + "/include"
-        ocp.acados_lib_path = acados_source_path + "/lib"
+        # ocp.acados_include_path = acados_source_path + "/include"
+        # ocp.acados_lib_path = acados_source_path + "/lib"
         ocp.dims.N = n_stage
         n_params = len(model.p)
         ocp.dims.np = n_params

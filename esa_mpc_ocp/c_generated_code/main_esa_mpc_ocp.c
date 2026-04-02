@@ -37,55 +37,53 @@
 #include "acados/utils/math.h"
 #include "acados_c/ocp_nlp_interface.h"
 #include "acados_c/external_function_interface.h"
-#include "acados_solver_spline_ocp.h"
+#include "acados_solver_esa_mpc_ocp.h"
 
 // blasfeo
 #include "blasfeo_d_aux_ext_dep.h"
 
-#define NX     SPLINE_OCP_NX
-#define NP     SPLINE_OCP_NP
-#define NU     SPLINE_OCP_NU
-#define NBX0   SPLINE_OCP_NBX0
-#define NP_GLOBAL   SPLINE_OCP_NP_GLOBAL
+#define NX     ESA_MPC_OCP_NX
+#define NP     ESA_MPC_OCP_NP
+#define NU     ESA_MPC_OCP_NU
+#define NBX0   ESA_MPC_OCP_NBX0
+#define NP_GLOBAL   ESA_MPC_OCP_NP_GLOBAL
 
 
 int main()
 {
 
-    spline_ocp_solver_capsule *acados_ocp_capsule = spline_ocp_acados_create_capsule();
+    esa_mpc_ocp_solver_capsule *acados_ocp_capsule = esa_mpc_ocp_acados_create_capsule();
     // there is an opportunity to change the number of shooting intervals in C without new code generation
-    int N = SPLINE_OCP_N;
+    int N = ESA_MPC_OCP_N;
     // allocate the array and fill it accordingly
     double* new_time_steps = NULL;
-    int status = spline_ocp_acados_create_with_discretization(acados_ocp_capsule, N, new_time_steps);
+    int status = esa_mpc_ocp_acados_create_with_discretization(acados_ocp_capsule, N, new_time_steps);
 
     if (status)
     {
-        printf("spline_ocp_acados_create() returned status %d. Exiting.\n", status);
+        printf("esa_mpc_ocp_acados_create() returned status %d. Exiting.\n", status);
         exit(1);
     }
 
-    ocp_nlp_config *nlp_config = spline_ocp_acados_get_nlp_config(acados_ocp_capsule);
-    ocp_nlp_dims *nlp_dims = spline_ocp_acados_get_nlp_dims(acados_ocp_capsule);
-    ocp_nlp_in *nlp_in = spline_ocp_acados_get_nlp_in(acados_ocp_capsule);
-    ocp_nlp_out *nlp_out = spline_ocp_acados_get_nlp_out(acados_ocp_capsule);
-    ocp_nlp_solver *nlp_solver = spline_ocp_acados_get_nlp_solver(acados_ocp_capsule);
-    void *nlp_opts = spline_ocp_acados_get_nlp_opts(acados_ocp_capsule);
+    ocp_nlp_config *nlp_config = esa_mpc_ocp_acados_get_nlp_config(acados_ocp_capsule);
+    ocp_nlp_dims *nlp_dims = esa_mpc_ocp_acados_get_nlp_dims(acados_ocp_capsule);
+    ocp_nlp_in *nlp_in = esa_mpc_ocp_acados_get_nlp_in(acados_ocp_capsule);
+    ocp_nlp_out *nlp_out = esa_mpc_ocp_acados_get_nlp_out(acados_ocp_capsule);
+    ocp_nlp_solver *nlp_solver = esa_mpc_ocp_acados_get_nlp_solver(acados_ocp_capsule);
+    void *nlp_opts = esa_mpc_ocp_acados_get_nlp_opts(acados_ocp_capsule);
     // initial condition
     double lbx0[NBX0];
     double ubx0[NBX0];
-    lbx0[0] = -10000000000;
-    ubx0[0] = 10000000000;
-    lbx0[1] = -10000000000;
-    ubx0[1] = 10000000000;
-    lbx0[2] = -10000000000;
-    ubx0[2] = 10000000000;
-    lbx0[3] = -10000000000;
-    ubx0[3] = 10000000000;
-    lbx0[4] = -10000000000;
-    ubx0[4] = 10000000000;
-    lbx0[5] = -10000000000;
-    ubx0[5] = 10000000000;
+    lbx0[0] = 0;
+    ubx0[0] = 0;
+    lbx0[1] = 0;
+    ubx0[1] = 0;
+    lbx0[2] = 0;
+    ubx0[2] = 0;
+    lbx0[3] = 0;
+    ubx0[3] = 0;
+    lbx0[4] = 0;
+    ubx0[4] = 0;
 
     ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, nlp_out, 0, "lbx", lbx0);
     ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, nlp_out, 0, "ubx", ubx0);
@@ -97,14 +95,10 @@ int main()
     x_init[2] = 0.0;
     x_init[3] = 0.0;
     x_init[4] = 0.0;
-    x_init[5] = 0.0;
-    x_init[6] = 0.0;
-    x_init[7] = 0.0;
 
     // initial value for control input
     double u0[NU];
     u0[0] = 0.0;
-    u0[1] = 0.0;
 
     // prepare evaluation
     int NTIMINGS = 1;
@@ -126,7 +120,7 @@ int main()
             ocp_nlp_out_set(nlp_config, nlp_dims, nlp_out, nlp_in, i, "u", u0);
         }
         ocp_nlp_out_set(nlp_config, nlp_dims, nlp_out, nlp_in, N, "x", x_init);
-        status = spline_ocp_acados_solve(acados_ocp_capsule);
+        status = esa_mpc_ocp_acados_solve(acados_ocp_capsule);
         ocp_nlp_get(nlp_solver, "time_tot", &elapsed_time);
         min_time = MIN(elapsed_time, min_time);
     }
@@ -147,18 +141,18 @@ int main()
 
     if (status == ACADOS_SUCCESS)
     {
-        printf("spline_ocp_acados_solve(): SUCCESS!\n");
+        printf("esa_mpc_ocp_acados_solve(): SUCCESS!\n");
     }
     else
     {
-        printf("spline_ocp_acados_solve() failed with status %d.\n", status);
+        printf("esa_mpc_ocp_acados_solve() failed with status %d.\n", status);
     }
 
     // get solution
     ocp_nlp_out_get(nlp_config, nlp_dims, nlp_out, 0, "kkt_norm_inf", &kkt_norm_inf);
     ocp_nlp_get(nlp_solver, "sqp_iter", &sqp_iter);
 
-    spline_ocp_acados_print_stats(acados_ocp_capsule);
+    esa_mpc_ocp_acados_print_stats(acados_ocp_capsule);
 
     printf("\nSolver info:\n");
     printf(" SQP iterations %2d\n minimum time for %d solve %f [ms]\n KKT %e\n",
@@ -167,14 +161,14 @@ int main()
 
 
     // free solver
-    status = spline_ocp_acados_free(acados_ocp_capsule);
+    status = esa_mpc_ocp_acados_free(acados_ocp_capsule);
     if (status) {
-        printf("spline_ocp_acados_free() returned status %d. \n", status);
+        printf("esa_mpc_ocp_acados_free() returned status %d. \n", status);
     }
     // free solver capsule
-    status = spline_ocp_acados_free_capsule(acados_ocp_capsule);
+    status = esa_mpc_ocp_acados_free_capsule(acados_ocp_capsule);
     if (status) {
-        printf("spline_ocp_acados_free_capsule() returned status %d. \n", status);
+        printf("esa_mpc_ocp_acados_free_capsule() returned status %d. \n", status);
     }
 
     return status;

@@ -65,7 +65,6 @@ LATERAL_ERROR_LOWER = -LATERAL_ERROR_UPPER
 DFYF_PHYSICAL_MAX = 1.0e5     # N/s
 DFYF_N_UPPER = DFYF_PHYSICAL_MAX / DF_SCALE
 DFYF_N_LOWER = -DFYF_N_UPPER
-
 # Initial state (physical values, Fyf auto-scaled)
 BETA_INIT = 0.0
 YAW_RATE_INIT = 0.0
@@ -78,7 +77,6 @@ VEHICLE_MASS = 2594.0          # kg
 VEHICLE_LF = 1.588               # m, CG to front axle
 VEHICLE_LR = 1.451               # m, CG to rear axle
 VEHICLE_IZ = 2500.0            # kg*m^2, yaw inertia
-
 # Nominal operating parameters
 VX_NOMINAL = 33.39            # m/s
 KAPPA_REF_NOMINAL = 0.0        # 1/m
@@ -99,19 +97,19 @@ USE_STATE_REF = True
 #   Cf = CF_FIT [N/rad]: secant from brush tire at ALPHA_F_FIT (see compute_cf_fit_front_secant)
 ALPHA_F_FIT = 4.0 / 180.0 * math.pi
 CF = 1.2e5
-DELTA_MAX = 0.07
+DELTA_MAX = 10.0
 DELTA_MIN = -DELTA_MAX
 
 # Constraint 3: Soft lateral error bounds
 #   lat_error ∈ [LATERAL_ERROR_LOWER - sl, LATERAL_ERROR_UPPER + su]
-W_SLACK_LAT_L1 = 500.0       # linear penalty (N/m per meter violation)
+W_SLACK_LAT_L1 = 0.0       # linear penalty (N/m per meter violation)
 W_SLACK_LAT_L2 = 100.0         # quadratic penalty
 
 # Cost weights (Bryson's rule inspired)
 W_BETA = 1e-2
 W_YAW_RATE = 15.0
 W_HEADING_ERROR = 20.0
-W_LATERAL_ERROR = 15
+W_LATERAL_ERROR = 1.5
 # Physical weight for Fyf, auto-scaled by FYF_SCALE^2
 W_FYF_PHYSICAL = 1e-10
 W_FYF_N = W_FYF_PHYSICAL * (FYF_SCALE * FYF_SCALE)
@@ -577,8 +575,8 @@ def set_acados_model(stage_n, tf, time_steps=None):
         ocp.parameter_values = default_phys
 
     # solver settings
-    ocp.solver_options.qp_solver = "PARTIAL_CONDENSING_HPIPM"
-    # ocp.solver_options.qp_solver = "FULL_CONDENSING_HPIPM"
+    # ocp.solver_options.qp_solver = "PARTIAL_CONDENSING_HPIPM"
+    ocp.solver_options.qp_solver = "FULL_CONDENSING_HPIPM"
     ocp.solver_options.nlp_solver_type = "SQP_RTI"
     ocp.solver_options.hessian_approx = "GAUSS_NEWTON"
     if USE_ZOH:
@@ -1075,7 +1073,7 @@ def print_qp_residual_report(acados_solver, N, qp_res, nlp_res):
 
     # Print the solution at a few stages to check for NaN or wild values
     print(f"\n--- Solution spot check ---")
-    for stage in [0, N // 4, N // 2, N]:
+    for stage in range(N+1):
         try:
             x_k = acados_solver.get(stage, "x")
             has_nan = np.any(np.isnan(x_k))
@@ -1434,8 +1432,260 @@ def run_benchmark(n_calls=1, plot_call_idx=0):
     return results
 
 
-if __name__ == "__main__":
+def load_and_solve_from_cpp_dump(json_path, plot=True, print_diagnostics=True):
+    """
+    从 C++ DumpNlpToJsonFile 输出的 JSON 中读取 acados NLP 全部输入参数，
+    创建 Python 侧 acados solver，逐 stage 覆盖后求解，方便对比调试。
 
+    Args:
+        json_path: C++ 端生成的 /tmp/esa_ocp_nlp_dump.json 路径
+        plot: 是否绘图
+        print_diagnostics: 是否输出 QP 诊断信息
+    Returns:
+        dict with x_sol, u_sol, status, acados_solver
+    """
+    import json
+    with open(json_path) as fp:
+        data = json.load(fp)
+
+    N = data["N"]
+    time_steps = np.array(data["time_steps"], dtype=float)
+    tf = float(np.sum(time_steps))
+    stages = data["stages"]
+    logger.info("loaded C++ NLP dump: N=%d, tf=%.3f, path=%s", N, tf, json_path)
+
+    acados_solver, sim_solver = set_acados_model(N, tf, time_steps=time_steps)
+
+    # stage 0 的 lbx == ubx == x0 (initial state fixing, nbx0 = nx)
+    x0 = np.array(stages[0]["lbx"], dtype=float)
+    logger.info("x0 from dump: %s", x0)
+
+    for i in range(N + 1):
+        s = stages[i]
+        ny = s["ny"]
+        nx_i = s["nx"]
+        nu_i = s["nu"]
+        np_i = s["np"]
+        nbx = s["nbx"]
+        nbu = s["nbu"]
+        ng = s["ng"]
+        ns = s["ns"]
+
+        # ---- cost ----
+        W_flat = np.array(s["W"], dtype=float)
+        W = W_flat.reshape((ny, ny), order='F')
+        acados_solver.cost_set(i, "W", W)
+        acados_solver.cost_set(i, "yref", np.array(s["yref"], dtype=float))
+
+        # ---- parameters ----
+        if np_i > 0:
+            acados_solver.set(i, "p", np.array(s["p"], dtype=float))
+
+        # ---- state bounds (stage 0 由 solve_for_x0 处理) ----
+        if i > 0 and nbx > 0:
+            acados_solver.constraints_set(
+                i, "lbx", np.array(s["lbx"], dtype=float))
+            acados_solver.constraints_set(
+                i, "ubx", np.array(s["ubx"], dtype=float))
+
+        # ---- control bounds ----
+        if nbu > 0:
+            acados_solver.constraints_set(
+                i, "lbu", np.array(s["lbu"], dtype=float))
+            acados_solver.constraints_set(
+                i, "ubu", np.array(s["ubu"], dtype=float))
+
+        # ---- general constraints ----
+        if ng > 0:
+            acados_solver.constraints_set(
+                i, "lg", np.array(s["lg"], dtype=float))
+            acados_solver.constraints_set(
+                i, "ug", np.array(s["ug"], dtype=float))
+            if len(s["C"]) > 0 and nx_i > 0:
+                C = np.array(s["C"], dtype=float).reshape((ng, nx_i), order='F')
+                acados_solver.constraints_set(i, "C", C)
+            if len(s["D"]) > 0 and nu_i > 0:
+                D = np.array(s["D"], dtype=float).reshape((ng, nu_i), order='F')
+                acados_solver.constraints_set(i, "D", D)
+
+        # ---- slack cost ----
+        if ns > 0:
+            acados_solver.cost_set(i, "Zl", np.array(s["Zl"], dtype=float))
+            acados_solver.cost_set(i, "Zu", np.array(s["Zu"], dtype=float))
+            acados_solver.cost_set(i, "zl", np.array(s["zl"], dtype=float))
+            acados_solver.cost_set(i, "zu", np.array(s["zu"], dtype=float))
+
+    # ---- solve ----
+    acados_solver.reset()
+    start_time = time.perf_counter()
+    acados_solver.solve_for_x0(
+        x0, fail_on_nonzero_status=False, print_stats_on_failure=True)
+    elapsed_ms = (time.perf_counter() - start_time) * 1000.0
+    status = acados_solver.status
+
+    x_sol = [acados_solver.get(i, "x") for i in range(N + 1)]
+    u_sol = [acados_solver.get(i, "u") for i in range(N)]
+
+    logger.info("solve status=%d  elapsed=%.3f ms  time_tot=%.3f ms",
+                status, elapsed_ms,
+                acados_solver.get_stats("time_tot") * 1000.0)
+    for k in range(0, N + 1, max(1, N // 4)):
+        logger.info("  x[%2d] = %s", k, x_sol[k])
+    for k in range(0, N, max(1, N // 4)):
+        logger.info("  u[%2d] = %s", k, u_sol[k])
+
+    if print_diagnostics:
+        qp_res, nlp_res = None, None
+        try:
+            stat = acados_solver.get_stats("statistics")
+            if stat.shape[0] > 6:
+                last = stat.shape[1] - 1
+                qp_res = {"stat": stat[3, last], "eq": stat[4, last],
+                           "ineq": stat[5, last], "comp": stat[6, last]}
+        except Exception:
+            pass
+        try:
+            r = acados_solver.get_residuals(recompute=False)
+            nlp_res = {"stat": r[0], "eq": r[1], "ineq": r[2], "comp": r[3]}
+        except Exception:
+            pass
+        print_qp_residual_report(acados_solver, N, qp_res, nlp_res)
+        # print_qp_diagnostics 调用 acados C 层 qp_diagnostics / get_from_qp_in，
+        # 在 dump-replay 场景下可能触发 segfault，默认跳过。
+        # print_qp_diagnostics(acados_solver, N)
+
+    if plot:
+        y_ref = [np.array(stages[i]["yref"], dtype=float) for i in range(N)]
+        y_ref_e = np.array(stages[N]["yref"], dtype=float)
+        # stages 1..N 的 lbx/ubx 是 lateral error bound (nbx=1)
+        lat_lb = [np.array(stages[i]["lbx"], dtype=float) for i in range(1, N + 1)]
+        lat_ub = [np.array(stages[i]["ubx"], dtype=float) for i in range(1, N + 1)]
+        # stage 0 没有独立的 lat bound，用 x0 lateral_error 占位
+        lat_lb.insert(0, np.array([x0[IDX_LATERAL_ERROR]]))
+        lat_ub.insert(0, np.array([x0[IDX_LATERAL_ERROR]]))
+
+        dfyf_lb = float(stages[0]["lbu"][0]) if stages[0]["nbu"] > 0 else None
+        dfyf_ub = float(stages[0]["ubu"][0]) if stages[0]["nbu"] > 0 else None
+        delta_min = float(stages[0]["lg"][0]) if stages[0]["ng"] > 0 else None
+        delta_max = float(stages[0]["ug"][0]) if stages[0]["ng"] > 0 else None
+
+        plot_acados_results(
+            x_sol, u_sol, N, tf,
+            y_ref=y_ref, y_ref_e=y_ref_e,
+            time_steps=time_steps,
+            lat_lb_list=lat_lb, lat_ub_list=lat_ub,
+            dfyf_lb=dfyf_lb, dfyf_ub=dfyf_ub,
+            plot_delta_figure=True,
+            x0=x0,
+            delta_min=delta_min, delta_max=delta_max,
+        )
+
+    return {
+        "status": status,
+        "elapsed_ms": elapsed_ms,
+        "x_sol": x_sol,
+        "u_sol": u_sol,
+        "x0": x0,
+        "acados_solver": acados_solver,
+    }
+
+
+def run_deterministic_solve():
+    """
+    Solve a fixed (no randomness) OCP instance and print results in a format
+    that can be compared line-by-line with the C main_esa_mpc_ocp executable.
+    """
+    N = 40
+    time_steps = np.concatenate([
+        np.full(20, 0.02),
+        np.full(20, 0.2),
+    ])
+    tf = float(np.sum(time_steps))
+    acados_solver, sim_solver = set_acados_model(N, tf, time_steps=time_steps)
+
+    default_phys = np.array([
+        VX_NOMINAL, KAPPA_REF_NOMINAL,
+        SLOPE_R_NOMINAL, ALPHA_R_BAR_NOMINAL, FYR_BAR_NOMINAL,
+        VEHICLE_MASS, VEHICLE_LF, VEHICLE_LR, VEHICLE_IZ
+    ])
+
+    x0 = np.array([0.0, 0.0, 0.0, 0.0, 0.0])
+
+    lat_ref = 3.0
+    ny = NX + NU
+    y_ref = []
+    for i in range(N):
+        ref = np.zeros(ny)
+        ref[IDX_LATERAL_ERROR] = lat_ref
+        y_ref.append(ref)
+    y_ref_e = np.zeros(NX)
+    y_ref_e[IDX_LATERAL_ERROR] = lat_ref
+
+    lat_lb_list, lat_ub_list = get_lat_error_bounds(N, time_steps)
+
+    phys_params = [default_phys.copy() for _ in range(N)]
+
+    res = run_single_solve(
+        True,
+        acados_solver, sim_solver, N, time_steps, x0, phys_params,
+        y_ref, y_ref_e, lat_lb_list, lat_ub_list,
+        DELTA_MIN, DELTA_MAX, DFYF_N_LOWER, DFYF_N_UPPER,
+    )
+
+    print(f"\nstatus = {res['status']}  nlp_iter = {res['nlp_iter']}  "
+          f"elapsed = {res['elapsed_ms']:.3f} ms  time_tot = {res['time_tot_ms']:.3f} ms")
+
+    x_sol = np.array(res["x_sol"])
+    u_sol = np.array(res["u_sol"])
+    print("\n--- xtraj ---")
+    for k in range(N + 1):
+        vals = " ".join(f"{v: .15e}" for v in x_sol[k])
+        print(f"  [{k:2d}] {vals}")
+    print("\n--- utraj ---")
+    for k in range(N):
+        vals = " ".join(f"{v: .15e}" for v in u_sol[k])
+        print(f"  [{k:2d}] {vals}")
+
+    print("\nPlotting deterministic solve (states, control, δ, Cartesian)...")
+    plot_acados_results(
+        res["x_sol"], res["u_sol"], N, res["tf"],
+        y_ref=res["y_ref"], y_ref_e=res["y_ref_e"],
+        time_steps=res["time_steps"],
+        lat_lb_list=res["lat_lb_list"],
+        lat_ub_list=res["lat_ub_list"],
+        dfyf_lb=res["dfyf_n_lower"],
+        dfyf_ub=res["dfyf_n_upper"],
+        plot_delta_figure=True,
+        x0=res["x0"],
+        delta_min=res["delta_min"],
+        delta_max=res["delta_max"],
+    )
+    vx_list = [res["phys_params"][min(i, N - 1)][0] for i in range(N + 1)]
+    kappa_list = [res["phys_params"][min(i, N - 1)][1] for i in range(N + 1)]
+    visualize_in_cartesian(
+        res["x_sol"], N, res["tf"], vx_list, kappa_list,
+        time_steps=res["time_steps"],
+    )
+
+    return res
+
+
+if __name__ == "__main__":
+    import argparse
     matplotlib.set_loglevel("warning")
-    results = run_benchmark(n_calls=1000, plot_call_idx=0)
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--from-cpp-dump", type=str, default=None,
+                        help="Path to C++ NLP dump JSON "
+                             "(e.g. /tmp/esa_ocp_nlp_dump.json)")
+    parser.add_argument("--deterministic", action="store_true",
+                        help="Run one fixed deterministic solve for C comparison")
+    args = parser.parse_args()
+
+    if args.from_cpp_dump:
+        load_and_solve_from_cpp_dump(args.from_cpp_dump)
+    elif args.deterministic:
+        run_deterministic_solve()
+    else:
+        results = run_benchmark(n_calls=1000, plot_call_idx=0)
     plt.show()
