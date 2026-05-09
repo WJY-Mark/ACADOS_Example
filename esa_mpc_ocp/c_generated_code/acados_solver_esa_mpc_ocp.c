@@ -446,7 +446,7 @@ void esa_mpc_ocp_acados_setup_nlp_in(esa_mpc_ocp_solver_capsule* capsule, const 
         time_steps[16] = 0.02;
         time_steps[17] = 0.02;
         time_steps[18] = 0.02;
-        time_steps[19] = 0.139654276285424;
+        time_steps[19] = 0.02;
         time_steps[20] = 0.2;
         time_steps[21] = 0.2;
         time_steps[22] = 0.2;
@@ -493,7 +493,7 @@ void esa_mpc_ocp_acados_setup_nlp_in(esa_mpc_ocp_solver_capsule* capsule, const 
         cost_scaling[16] = 0.02;
         cost_scaling[17] = 0.02;
         cost_scaling[18] = 0.02;
-        cost_scaling[19] = 0.139654276285424;
+        cost_scaling[19] = 0.02;
         cost_scaling[20] = 0.2;
         cost_scaling[21] = 0.2;
         cost_scaling[22] = 0.2;
@@ -635,6 +635,24 @@ void esa_mpc_ocp_acados_setup_nlp_in(esa_mpc_ocp_solver_capsule* capsule, const 
 
 
 
+    // slacks initial
+    double* zlu0_mem = calloc(4*NS0, sizeof(double));
+    double* Zl_0 = zlu0_mem+NS0*0;
+    double* Zu_0 = zlu0_mem+NS0*1;
+    double* zl_0 = zlu0_mem+NS0*2;
+    double* zu_0 = zlu0_mem+NS0*3;
+
+    // change only the non-zero elements:
+    Zl_0[0] = 10000;
+    Zu_0[0] = 10000;
+    zl_0[0] = 10000;
+    zu_0[0] = 10000;
+
+    ocp_nlp_cost_model_set(nlp_config, nlp_dims, nlp_in, 0, "Zl", Zl_0);
+    ocp_nlp_cost_model_set(nlp_config, nlp_dims, nlp_in, 0, "Zu", Zu_0);
+    ocp_nlp_cost_model_set(nlp_config, nlp_dims, nlp_in, 0, "zl", zl_0);
+    ocp_nlp_cost_model_set(nlp_config, nlp_dims, nlp_in, 0, "zu", zu_0);
+    free(zlu0_mem);
     // slacks
     double* zlumem = calloc(4*NS, sizeof(double));
     double* Zl = zlumem+NS*0;
@@ -642,8 +660,12 @@ void esa_mpc_ocp_acados_setup_nlp_in(esa_mpc_ocp_solver_capsule* capsule, const 
     double* zl = zlumem+NS*2;
     double* zu = zlumem+NS*3;
     // change only the non-zero elements:
-    Zl[0] = 100;
-    Zu[0] = 100;
+    Zl[1] = 10000;
+    Zu[1] = 10000;
+    zl[0] = 100;
+    zl[1] = 10000;
+    zu[0] = 100;
+    zu[1] = 10000;
 
     for (int i = 1; i < N; i++)
     {
@@ -663,8 +685,12 @@ void esa_mpc_ocp_acados_setup_nlp_in(esa_mpc_ocp_solver_capsule* capsule, const 
     double* zu_e = zluemem+NSN*3;
 
     // change only the non-zero elements:
-    Zl_e[0] = 100;
-    Zu_e[0] = 100;
+    Zl_e[1] = 10000;
+    Zu_e[1] = 10000;
+    zl_e[0] = 100;
+    zl_e[1] = 10000;
+    zu_e[0] = 100;
+    zu_e[1] = 10000;
 
     ocp_nlp_cost_model_set(nlp_config, nlp_dims, nlp_in, N, "Zl", Zl_e);
     ocp_nlp_cost_model_set(nlp_config, nlp_dims, nlp_in, N, "Zu", Zu_e);
@@ -734,8 +760,8 @@ void esa_mpc_ocp_acados_setup_nlp_in(esa_mpc_ocp_solver_capsule* capsule, const 
     C[0+NG * 0] = 1;
     C[0+NG * 1] = 0.0475591494459419;
     C[0+NG * 4] = 0.10565432707471896;
-    lg[0] = -10;
-    ug[0] = 10;
+    lg[0] = -0.07;
+    ug[0] = 0.07;
 
     for (int i = 0; i < N; i++)
     {
@@ -749,6 +775,21 @@ void esa_mpc_ocp_acados_setup_nlp_in(esa_mpc_ocp_solver_capsule* capsule, const 
     free(lug);
 
 
+    // set up soft bounds for general linear constraints
+    int* idxsg = malloc(NSG * sizeof(int));
+    idxsg[0] = 0;
+    double* lusg = calloc(2*NSG, sizeof(double));
+    double* lsg = lusg;
+    double* usg = lusg + NSG;
+
+    for (int i = 0; i < N; i++)
+    {
+        ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, nlp_out, i, "idxsg", idxsg);
+        ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, nlp_out, i, "lsg", lsg);
+        ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, nlp_out, i, "usg", usg);
+    }
+    free(idxsg);
+    free(lusg);
 
 
     /* Path constraints */
@@ -830,8 +871,8 @@ void esa_mpc_ocp_acados_setup_nlp_in(esa_mpc_ocp_solver_capsule* capsule, const 
     C_e[0+NGN * 0] = 1;
     C_e[0+NGN * 1] = 0.0475591494459419;
     C_e[0+NGN * 4] = 0.10565432707471896;
-    lg_e[0] = -10;
-    ug_e[0] = 10;
+    lg_e[0] = -0.07;
+    ug_e[0] = 0.07;
 
     ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, nlp_out, N, "C", C_e);
     ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, nlp_out, N, "lg", lg_e);
@@ -850,6 +891,18 @@ void esa_mpc_ocp_acados_setup_nlp_in(esa_mpc_ocp_solver_capsule* capsule, const 
 
 
 
+    // set up soft bounds for general linear constraints
+    int* idxsg_e = calloc(NSGN, sizeof(int));
+    idxsg_e[0] = 0;
+    double* lusg_e = calloc(2*NSGN, sizeof(double));
+    double* lsg_e = lusg_e;
+    double* usg_e = lusg_e + NSGN;
+
+    ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, nlp_out, N, "idxsg", idxsg_e);
+    ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, nlp_out, N, "lsg", lsg_e);
+    ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, nlp_out, N, "usg", usg_e);
+    free(idxsg_e);
+    free(lusg_e);
 
 
 
@@ -949,7 +1002,7 @@ static void esa_mpc_ocp_acados_create_set_opts(esa_mpc_ocp_solver_capsule* capsu
     bool store_iterates = false;
     ocp_nlp_solver_opts_set(nlp_config, nlp_opts, "store_iterates", &store_iterates);
     // set HPIPM mode: should be done before setting other QP solver options
-    ocp_nlp_solver_opts_set(nlp_config, nlp_opts, "qp_hpipm_mode", "ROBUST");
+    ocp_nlp_solver_opts_set(nlp_config, nlp_opts, "qp_hpipm_mode", "SPEED_ABS");
 
 
 

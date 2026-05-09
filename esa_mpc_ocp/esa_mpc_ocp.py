@@ -97,13 +97,15 @@ USE_STATE_REF = True
 #   Cf = CF_FIT [N/rad]: secant from brush tire at ALPHA_F_FIT (see compute_cf_fit_front_secant)
 ALPHA_F_FIT = 4.0 / 180.0 * math.pi
 CF = 1.2e5
-DELTA_MAX = 10.0
+DELTA_MAX = 0.07
 DELTA_MIN = -DELTA_MAX
+W_SLACK_DELTA_L1 = 10000.0
+W_SLACK_DELTA_L2 = 10000.0
 
 # Constraint 3: Soft lateral error bounds
 #   lat_error ∈ [LATERAL_ERROR_LOWER - sl, LATERAL_ERROR_UPPER + su]
-W_SLACK_LAT_L1 = 0.0       # linear penalty (N/m per meter violation)
-W_SLACK_LAT_L2 = 100.0         # quadratic penalty
+W_SLACK_LAT_L1 = 100.0       # linear penalty (N/m per meter violation)
+W_SLACK_LAT_L2 = 0.0         # quadratic penalty
 
 # Cost weights (Bryson's rule inspired)
 W_BETA = 1e-2
@@ -519,10 +521,16 @@ def set_acados_model(stage_n, tf, time_steps=None):
     ocp.constraints.D = D_delta
     ocp.constraints.lg = np.array([DELTA_MIN])
     ocp.constraints.ug = np.array([DELTA_MAX])
+    ocp.constraints.idxsg = np.array([0])
+    ocp.constraints.lsg   = np.array([0.0])
+    ocp.constraints.usg   = np.array([0.0])
     # Terminal stage N (no control column)
     ocp.constraints.C_e = C_delta
     ocp.constraints.lg_e = np.array([DELTA_MIN])
     ocp.constraints.ug_e = np.array([DELTA_MAX])
+    ocp.constraints.idxsg_e = np.array([0])
+    ocp.constraints.lsg_e   = np.array([0.0])
+    ocp.constraints.usg_e   = np.array([0.0])
 
     # ------------------------------------------------------------------
     # Constraint 2: Control box (hard) — dFyf_n ∈ [lower, upper]
@@ -536,12 +544,12 @@ def set_acados_model(stage_n, tf, time_steps=None):
     #   lat_error ∈ [LATERAL_ERROR_LOWER - sl, LATERAL_ERROR_UPPER + su]
     #   Hard bound + softened via slack variable s
     # ------------------------------------------------------------------
-    ns = 1   # one slack (for lat_error)
+    ns = 2   # delta general slack + lat_error box slack
     # Intermediate stages
     ocp.constraints.lbx   = np.array([LATERAL_ERROR_LOWER])
     ocp.constraints.ubx   = np.array([LATERAL_ERROR_UPPER])
     ocp.constraints.idxbx = np.array([IDX_LATERAL_ERROR])
-    ocp.constraints.idxsbx = np.array([0])   # soften first (only) box constraint
+    ocp.constraints.idxsbx = np.array([0])
     ocp.constraints.lsbx  = np.array([0.0])
     ocp.constraints.usbx  = np.array([0.0])
     # Terminal stage
@@ -552,15 +560,22 @@ def set_acados_model(stage_n, tf, time_steps=None):
     ocp.constraints.lsbx_e  = np.array([0.0])
     ocp.constraints.usbx_e  = np.array([0.0])
 
-    # Slack costs: L(s) = Zl/Zu * s^2 + zl/zu * s  (L1 penalty by default)
-    ocp.cost.Zl = W_SLACK_LAT_L2 * np.ones(ns)
-    ocp.cost.Zu = W_SLACK_LAT_L2 * np.ones(ns)
-    ocp.cost.zl = W_SLACK_LAT_L1 * np.ones(ns)
-    ocp.cost.zu = W_SLACK_LAT_L1 * np.ones(ns)
-    ocp.cost.Zl_e = W_SLACK_LAT_L2 * np.ones(ns)
-    ocp.cost.Zu_e = W_SLACK_LAT_L2 * np.ones(ns)
-    ocp.cost.zl_e = W_SLACK_LAT_L1 * np.ones(ns)
-    ocp.cost.zu_e = W_SLACK_LAT_L1 * np.ones(ns)
+    # Slack costs: L(s) = Zl/Zu * s^2 + zl/zu * s
+    # order: [delta_slack (general), lat_error_slack (box)]
+    # stage 0: only general constraint slack (nsg=1), no box slack (idxbx_0 fixes x0)
+    ocp.cost.Zl_0 = np.array([W_SLACK_DELTA_L2])
+    ocp.cost.Zu_0 = np.array([W_SLACK_DELTA_L2])
+    ocp.cost.zl_0 = np.array([W_SLACK_DELTA_L1])
+    ocp.cost.zu_0 = np.array([W_SLACK_DELTA_L1])
+    # order: [sbx (lat_error), sg (delta)]
+    ocp.cost.Zl = np.array([W_SLACK_LAT_L2, W_SLACK_DELTA_L2])
+    ocp.cost.Zu = np.array([W_SLACK_LAT_L2, W_SLACK_DELTA_L2])
+    ocp.cost.zl = np.array([W_SLACK_LAT_L1, W_SLACK_DELTA_L1])
+    ocp.cost.zu = np.array([W_SLACK_LAT_L1, W_SLACK_DELTA_L1])
+    ocp.cost.Zl_e = np.array([W_SLACK_LAT_L2, W_SLACK_DELTA_L2])
+    ocp.cost.Zu_e = np.array([W_SLACK_LAT_L2, W_SLACK_DELTA_L2])
+    ocp.cost.zl_e = np.array([W_SLACK_LAT_L1, W_SLACK_DELTA_L1])
+    ocp.cost.zu_e = np.array([W_SLACK_LAT_L1, W_SLACK_DELTA_L1])
 
     default_phys = np.array([
         VX_NOMINAL, KAPPA_REF_NOMINAL,
@@ -588,8 +603,8 @@ def set_acados_model(stage_n, tf, time_steps=None):
     ocp.solver_options.print_level = 0
     ocp.solver_options.tol = 1e-6
     ocp.solver_options.tf = tf
-    ocp.solver_options.hpipm_mode = "BALANCE"
-    # ocp.solver_options.hpipm_mode = "SPEED_ABS"
+    # ocp.solver_options.hpipm_mode = "BALANCE"
+    ocp.solver_options.hpipm_mode = "SPEED_ABS"
     ocp.solver_options.qp_solver_warm_start = 1
     ocp.solver_options.nlp_solver_warm_start_first_qp = True
     # ocp.solver_options.nlp_solver_ext_qp_res = 1

@@ -1,7 +1,10 @@
-from typing import List, Tuple, Optional
-from typing import List, Tuple
+from typing import List, Tuple, Optional, Union
+
 import bisect
 import math
+
+import numpy as np
+from scipy.interpolate import CubicSpline
 
 
 class Spline2dSeg:
@@ -208,6 +211,149 @@ class Spline2d:
         return f"Spline2d(n_segments={len(self.segs)}, duration={self.t_knots[-1] if self.t_knots else 0})"
 
 
+class CubicSpline2dSeg:
+    """二维三次多项式样条段：x = a0+a1*t+a2*t^2+a3*t^3，y 同理，t ∈ [0, duration]"""
+
+    def __init__(self, a0, a1, a2, a3, b0, b1, b2, b3):
+        self.a0, self.a1, self.a2, self.a3 = a0, a1, a2, a3
+        self.b0, self.b1, self.b2, self.b3 = b0, b1, b2, b3
+
+    def evaluate(self, t):
+        t2, t3 = t * t, t * t * t
+        x = self.a0 + self.a1 * t + self.a2 * t2 + self.a3 * t3
+        y = self.b0 + self.b1 * t + self.b2 * t2 + self.b3 * t3
+        return x, y
+
+    def evaluate_derivative(self, t):
+        t2 = t * t
+        dx = self.a1 + 2 * self.a2 * t + 3 * self.a3 * t2
+        dy = self.b1 + 2 * self.b2 * t + 3 * self.b3 * t2
+        return dx, dy
+
+    def evaluate_second_derivative(self, t):
+        d2x = 2 * self.a2 + 6 * self.a3 * t
+        d2y = 2 * self.b2 + 6 * self.b3 * t
+        return d2x, d2y
+
+    def evaluate_derivative_order(self, t: float, order: int) -> Tuple[float, float]:
+        if order == 0:
+            return self.evaluate(t)
+        if order == 1:
+            return self.evaluate_derivative(t)
+        if order == 2:
+            return self.evaluate_second_derivative(t)
+        raise ValueError(f"Cubic spline supports derivative orders 0-2 only, got {order}")
+
+
+class CubicSpline2d:
+    """二维分段三次样条（段内为三次多项式），接口与 Spline2d 在 0~2 阶导数上一致。"""
+
+    def __init__(self):
+        self.segs: List[CubicSpline2dSeg] = []
+        self.t_knots: List[float] = []
+        self.t_span: List[float] = []
+
+    def add_segment(self, seg: CubicSpline2dSeg, duration: float):
+        if duration <= 0:
+            raise ValueError("Duration must be positive")
+        if not self.segs:
+            self.t_knots = [0.0, duration]
+        else:
+            self.t_knots.append(self.t_knots[-1] + duration)
+        self.t_span.append(duration)
+        self.segs.append(seg)
+
+    def find_segment_index(self, t: float) -> Tuple[int, float]:
+        if not self.segs:
+            raise ValueError("No segments in spline")
+        if t < 0 or t > self.t_knots[-1]:
+            raise ValueError(f"Time {t} out of range [0, {self.t_knots[-1]}]")
+        seg_idx = bisect.bisect_right(self.t_knots, t) - 1
+        seg_idx = max(0, min(seg_idx, len(self.segs) - 1))
+        return seg_idx, t - self.t_knots[seg_idx]
+
+    def evaluate_derivative(
+        self, t: float, order: int = 0
+    ) -> Tuple[float, float]:
+        seg_idx, t_local = self.find_segment_index(t)
+        return self.segs[seg_idx].evaluate_derivative_order(t_local, order)
+
+    def evaluate(self, t: float) -> Tuple[float, float]:
+        return self.evaluate_derivative(t, 0)
+
+    def evaluate_first_derivative(self, t: float) -> Tuple[float, float]:
+        return self.evaluate_derivative(t, 1)
+
+    def evaluate_second_derivative(self, t: float) -> Tuple[float, float]:
+        return self.evaluate_derivative(t, 2)
+
+    def get_curvature(self, t: float) -> float:
+        vel = self.evaluate_derivative(t, 1)
+        acc = self.evaluate_derivative(t, 2)
+        denom = (vel[0] ** 2 + vel[1] ** 2) ** 1.5
+        if denom < 1e-30:
+            return 0.0
+        return (vel[0] * acc[1] - vel[1] * acc[0]) / denom
+
+    def get_tangent_angle(self, t: float) -> float:
+        dx, dy = self.evaluate_derivative(t, 1)
+        return math.atan2(dy, dx)
+
+    @staticmethod
+    def _ppoly_coeffs_for_interval(
+        cs: CubicSpline, i: int
+    ) -> Tuple[np.ndarray, float]:
+        """从 scipy CubicSpline 取出第 i 段 [t_i, t_{i+1}] 上关于局部变量 (u - t_i) 的系数，升幂顺序。"""
+        t = cs.x
+        c = cs.c
+        # scipy PPoly / CubicSpline: p(dx) = c[0]*dx^3 + c[1]*dx^2 + c[2]*dx + c[3], dx = u - t[i]
+        hi = c[0, i]
+        h2 = c[1, i]
+        h1 = c[2, i]
+        h0 = c[3, i]
+        return np.array([h0, h1, h2, hi], dtype=float), float(t[i])
+
+    @classmethod
+    def from_waypoints(
+        cls,
+        points: np.ndarray,
+        bc_type: Optional[Union[str, Tuple]] = None,
+    ) -> "CubicSpline2d":
+        """用累积弦长作参数 u，对 x(u)、y(u) 分别做 C^2 三次样条插值，再拆成段内三次多项式。
+
+        默认边界条件：路点不少于 4 个时为 ``not-a-knot``（与 scipy 默认一致），否则为 ``natural``。
+        """
+        pts = np.asarray(points, dtype=float)
+        if pts.ndim != 2 or pts.shape[1] != 2:
+            raise ValueError("points must be array of shape (n, 2)")
+        if len(pts) < 2:
+            raise ValueError("At least two waypoints required")
+        chord = np.linalg.norm(np.diff(pts, axis=0), axis=1)
+        u = np.concatenate(([0.0], np.cumsum(chord)))
+        if np.any(np.diff(u) <= 0):
+            raise ValueError("Waypoints must have strictly increasing cumulative chord length")
+        if bc_type is None:
+            bc_type = "not-a-knot" if len(pts) >= 4 else "natural"
+        cs_x = CubicSpline(u, pts[:, 0], bc_type=bc_type)
+        cs_y = CubicSpline(u, pts[:, 1], bc_type=bc_type)
+        out = cls()
+        n_int = len(u) - 1
+        for i in range(n_int):
+            cx, t0 = cls._ppoly_coeffs_for_interval(cs_x, i)
+            cy, t0y = cls._ppoly_coeffs_for_interval(cs_y, i)
+            assert abs(t0 - t0y) < 1e-9
+            du = u[i + 1] - u[i]
+            seg = CubicSpline2dSeg(cx[0], cx[1], cx[2], cx[3], cy[0], cy[1], cy[2], cy[3])
+            out.add_segment(seg, du)
+        return out
+
+    def __repr__(self) -> str:
+        return (
+            f"CubicSpline2d(n_segments={len(self.segs)}, "
+            f"u_max={self.t_knots[-1] if self.t_knots else 0})"
+        )
+
+
 # 使用示例
 if __name__ == "__main__":
     spline = Spline2d()
@@ -224,6 +370,7 @@ if __name__ == "__main__":
     test_times = [0, 0.5, 1.0, 2.5, 3.0, 4.0, 4.5]
     for t in test_times:
         seg_idx, t_local = spline.find_segment_index(t)
-        t_start, t_end = spline.get_segment_time_range(seg_idx)
+        t_start = spline.t_knots[seg_idx]
+        t_end = spline.t_knots[seg_idx + 1]
         print(
             f"t={t:.1f} → seg_{seg_idx} (t_local={t_local:.1f}), range=[{t_start:.1f}, {t_end:.1f})")
