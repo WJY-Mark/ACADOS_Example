@@ -815,19 +815,21 @@ def plot_acados_results(
     time_steps=None,
     lat_lb_list=None,
     lat_ub_list=None,
-    dfyf_lb=None,
-    dfyf_ub=None,
+    dfyf_lb_list=None,
+    dfyf_ub_list=None,
     plot_delta_figure=True,
     x0=None,
-    delta_min=None,
-    delta_max=None,
+    delta_min_list=None,
+    delta_max_list=None,
+    ws_x=None,
+    ws_u=None,
 ):
     """
     Plot the results from Acados solver for the 5-state ESA MPC model.
 
     Args:
-        x: array (N+1, 5)
-        u: array (N, 1)
+        x: array (N+1, 5)  — optimal state trajectory
+        u: array (N, 1)    — optimal control trajectory
         N: Number of control intervals
         tf: Final time
         y_ref: list of (N,) refs, each shape (6,)
@@ -835,10 +837,12 @@ def plot_acados_results(
         time_steps: optional per-stage dt array (length N) for non-uniform grids
         lat_lb_list, lat_ub_list: optional list length N+1 of 1-D arrays; lat_error
             bounds vs node time (step plot, same schedule as get_lat_error_bounds).
-        dfyf_lb, dfyf_ub: optional scalars; dFyf_n hard box (horizontal band on control plot).
+        dfyf_lb_list, dfyf_ub_list: optional list length N; dFyf_n per-stage bounds.
         plot_delta_figure: if True, second figure: δ_lin vs DELTA_* (same linear form as ocp.constraints.C).
         x0: optional initial state (5,), plotted as marker on each state subplot.
-        delta_min, delta_max: optional actual δ constraint bounds (scalars).
+        delta_min_list, delta_max_list: optional list length N+1; δ constraint bounds per stage.
+        ws_x: optional array (N+1, 5) — warm-start states (plotted for comparison).
+        ws_u: optional array (N, 1)   — warm-start controls (plotted for comparison).
     """
     x = np.array(x)
     u = np.array(u)
@@ -875,9 +879,17 @@ def plot_acados_results(
     fig, axes = plt.subplots(len(state_labels) + 1, 1, figsize=(12, 14), sharex=True)
 
     has_x0 = x0 is not None
+    has_ws_x = ws_x is not None
+    has_ws_u = ws_u is not None
+    if has_ws_x:
+        ws_x = np.array(ws_x)
+    if has_ws_u:
+        ws_u = np.array(ws_u)
 
     for ax, (idx, ylabel, title) in zip(axes, state_labels):
         ax.plot(t_x, x[:, idx], 'b-', linewidth=2, label=ylabel.split()[0])
+        if has_ws_x:
+            ax.plot(t_x, ws_x[:, idx], 'c--', linewidth=1.2, alpha=0.7, label='warm start')
         if has_ref:
             ref_vals = np.concatenate([yr[:, idx], [yre[idx]]])
             ax.step(t_x, ref_vals, 'm--', linewidth=1.2, where='post', label='ref')
@@ -892,19 +904,21 @@ def plot_acados_results(
         ax.grid(True)
 
     axes[-1].step(t_u, u[:, 0], 'b-', linewidth=2, where='post', label='dFyf_n')
+    if has_ws_u:
+        axes[-1].step(t_u, ws_u[:, 0], 'c--', linewidth=1.2, alpha=0.7, where='post', label='warm start')
     if has_ref:
         axes[-1].step(t_u, yr[:, -1], 'm--', linewidth=1.2, where='post', label='ref')
-    if dfyf_lb is not None and dfyf_ub is not None:
-        axes[-1].fill_between(
-            [t_x[0], t_x[-1]],
-            dfyf_lb,
-            dfyf_ub,
-            alpha=0.2,
-            color='gray',
-            label='dFyf box',
-        )
-        axes[-1].axhline(dfyf_lb, color='g', linestyle='--', linewidth=1.0)
-        axes[-1].axhline(dfyf_ub, color='r', linestyle='--', linewidth=1.0)
+    has_dfyf_bounds = (
+        dfyf_lb_list is not None
+        and dfyf_ub_list is not None
+        and len(dfyf_lb_list) == N
+        and len(dfyf_ub_list) == N
+    )
+    if has_dfyf_bounds:
+        dfyf_lb_arr = np.array([float(v) for v in dfyf_lb_list])
+        dfyf_ub_arr = np.array([float(v) for v in dfyf_ub_list])
+        axes[-1].step(t_u, dfyf_lb_arr, 'g--', linewidth=1.0, where='post', label='dFyf lb')
+        axes[-1].step(t_u, dfyf_ub_arr, 'r--', linewidth=1.0, where='post', label='dFyf ub')
     if has_x0:
         axes[-1].plot(0.0, 0.0, 'r*', markersize=12, zorder=5, label='u0 (dFyf init)')
     axes[-1].set_xlabel('Time (s)')
@@ -922,8 +936,14 @@ def plot_acados_results(
             + lf_over_vx * x[:, IDX_YAW_RATE]
             - (FYF_SCALE / CF_FIT) * x[:, IDX_FYF]
         )
-        d_lo = delta_min if delta_min is not None else DELTA_MIN
-        d_hi = delta_max if delta_max is not None else DELTA_MAX
+        has_delta_bounds = (
+            delta_min_list is not None
+            and delta_max_list is not None
+            and len(delta_min_list) == N + 1
+            and len(delta_max_list) == N + 1
+        )
+        d_lo = np.array([float(v) if abs(float(v)) <= 1.0 else np.nan for v in delta_min_list]) if has_delta_bounds else np.full(N + 1, DELTA_MIN)
+        d_hi = np.array([float(v) if abs(float(v)) <= 1.0 else np.nan for v in delta_max_list]) if has_delta_bounds else np.full(N + 1, DELTA_MAX)
         fig2, ax_d = plt.subplots(1, 1, figsize=(10, 4))
         ax_d.fill_between(
             t_x,
@@ -931,6 +951,7 @@ def plot_acados_results(
             d_hi,
             alpha=0.15,
             color='gray',
+            step='post',
             label='δ linear constraint band',
         )
         ax_d.plot(
@@ -940,10 +961,10 @@ def plot_acados_results(
             linewidth=2,
             label=r'$\delta_{\mathrm{lin}}$ = β + (lf/v$_x$)·ẏ − F$_{yf}$/C$_f$',
         )
-        ax_d.axhline(d_lo, color='g', linestyle='--', linewidth=1.2,
-                      label=f'DELTA_MIN={d_lo:.4f}')
-        ax_d.axhline(d_hi, color='r', linestyle='--', linewidth=1.2,
-                      label=f'DELTA_MAX={d_hi:.4f}')
+        ax_d.step(t_x, d_lo, 'g--', linewidth=1.2, where='post',
+                  label='DELTA_MIN')
+        ax_d.step(t_x, d_hi, 'r--', linewidth=1.2, where='post',
+                  label='DELTA_MAX')
         if has_x0:
             delta_x0 = (x0[IDX_BETA]
                         + lf_over_vx * x0[IDX_YAW_RATE]
@@ -1113,9 +1134,12 @@ def print_qp_residual_report(acados_solver, N, qp_res, nlp_res):
 
 def run_single_solve(print_diagnostics, acados_solver, sim_solver, N, time_steps, x0, phys_params,
                      y_ref, y_ref_e, lat_lb_list, lat_ub_list,
-                     delta_min, delta_max, dfyf_n_lower, dfyf_n_upper):
+                     delta_min_list, delta_max_list, dfyf_lb_list, dfyf_ub_list):
     """
     Configure and solve one OCP instance. Returns a dict with timing and solution.
+
+    delta_min_list, delta_max_list: list of length N+1 (stages 0..N)
+    dfyf_lb_list, dfyf_ub_list:    list of length N   (stages 0..N-1)
     """
     tf = float(np.sum(time_steps))
 
@@ -1132,18 +1156,18 @@ def run_single_solve(print_diagnostics, acados_solver, sim_solver, N, time_steps
         if i >= 1:
             acados_solver.constraints_set(i, "lbx", lat_lb_list[i])
             acados_solver.constraints_set(i, "ubx", lat_ub_list[i])
-        acados_solver.constraints_set(i, "lg", np.array([delta_min]))
-        acados_solver.constraints_set(i, "ug", np.array([delta_max]))
-        acados_solver.constraints_set(i, "lbu", np.array([dfyf_n_lower]))
-        acados_solver.constraints_set(i, "ubu", np.array([dfyf_n_upper]))
+        acados_solver.constraints_set(i, "lg", np.array([delta_min_list[i]]))
+        acados_solver.constraints_set(i, "ug", np.array([delta_max_list[i]]))
+        acados_solver.constraints_set(i, "lbu", np.array([dfyf_lb_list[i]]))
+        acados_solver.constraints_set(i, "ubu", np.array([dfyf_ub_list[i]]))
 
     acados_solver.set(N, 'p', solver_params[-1])
     if USE_STATE_REF:
         acados_solver.cost_set(N, "yref", y_ref_e)
     acados_solver.constraints_set(N, "lbx", lat_lb_list[N])
     acados_solver.constraints_set(N, "ubx", lat_ub_list[N])
-    acados_solver.constraints_set(N, "lg", np.array([delta_min]))
-    acados_solver.constraints_set(N, "ug", np.array([delta_max]))
+    acados_solver.constraints_set(N, "lg", np.array([delta_min_list[N]]))
+    acados_solver.constraints_set(N, "ug", np.array([delta_max_list[N]]))
 
     acados_solver.reset()
 
@@ -1204,10 +1228,10 @@ def run_single_solve(print_diagnostics, acados_solver, sim_solver, N, time_steps
         "lat_lb_list": lat_lb_list,
         "lat_ub_list": lat_ub_list,
         "phys_params": phys_params,
-        "delta_min": delta_min,
-        "delta_max": delta_max,
-        "dfyf_n_lower": dfyf_n_lower,
-        "dfyf_n_upper": dfyf_n_upper,
+        "delta_min_list": delta_min_list,
+        "delta_max_list": delta_max_list,
+        "dfyf_lb_list": dfyf_lb_list,
+        "dfyf_ub_list": dfyf_ub_list,
         "qp_res": qp_res,
         "nlp_res": nlp_res,
     }
@@ -1310,15 +1334,19 @@ def run_benchmark(n_calls=1, plot_call_idx=0):
 
         delta_min = DELTA_MIN + rng.uniform(-0.005, 0.005)
         delta_max = DELTA_MAX + rng.uniform(-0.005, 0.005)
+        delta_min_list = [delta_min] * (N + 1)
+        delta_max_list = [delta_max] * (N + 1)
         dfyf_n_lower = DFYF_N_LOWER * (1.0 + rng.uniform(-0.1, 0.1))
         dfyf_n_upper = DFYF_N_UPPER * (1.0 + rng.uniform(-0.1, 0.1))
+        dfyf_lb_list = [dfyf_n_lower] * N
+        dfyf_ub_list = [dfyf_n_upper] * N
 
         # --- 6. Solve ---
         print_diagnostics = False
         res = run_single_solve(print_diagnostics,
             acados_solver, sim_solver, N, ts, x0, phys_params,
             y_ref, y_ref_e, lat_lb_list, lat_ub_list,
-            delta_min, delta_max, dfyf_n_lower, dfyf_n_upper,
+            delta_min_list, delta_max_list, dfyf_lb_list, dfyf_ub_list,
         )
         results.append(res)
 
@@ -1343,8 +1371,8 @@ def run_benchmark(n_calls=1, plot_call_idx=0):
                   f"lat_ref_e={y_ref_e[IDX_LATERAL_ERROR]:.3f}")
             print(f"  constr: lat_lb[1]={float(lat_lb_list[1]):.3f}  "
                   f"lat_ub[1]={float(lat_ub_list[1]):.3f}  "
-                  f"delta=[{delta_min:.4f},{delta_max:.4f}]  "
-                  f"dFyf=[{dfyf_n_lower:.3f},{dfyf_n_upper:.3f}]")
+                  f"delta=[{delta_min_list[0]:.4f},{delta_max_list[0]:.4f}]  "
+                  f"dFyf=[{dfyf_lb_list[0]:.3f},{dfyf_ub_list[0]:.3f}]")
             if is_fail:
                 x_end = res["x_sol"][-1]
                 print(f"  x[N]: beta={x_end[IDX_BETA]:.4f}  "
@@ -1432,12 +1460,12 @@ def run_benchmark(n_calls=1, plot_call_idx=0):
             time_steps=r["time_steps"],
             lat_lb_list=r["lat_lb_list"],
             lat_ub_list=r["lat_ub_list"],
-            dfyf_lb=r["dfyf_n_lower"],
-            dfyf_ub=r["dfyf_n_upper"],
+            dfyf_lb_list=r["dfyf_lb_list"],
+            dfyf_ub_list=r["dfyf_ub_list"],
             plot_delta_figure=True,
             x0=r["x0"],
-            delta_min=r["delta_min"],
-            delta_max=r["delta_max"],
+            delta_min_list=r["delta_min_list"],
+            delta_max_list=r["delta_max_list"],
         )
         vx_list = [r["phys_params"][min(i, N - 1)][0] for i in range(N + 1)]
         kappa_list = [r["phys_params"][min(i, N - 1)][1] for i in range(N + 1)]
@@ -1530,8 +1558,26 @@ def load_and_solve_from_cpp_dump(json_path, plot=True, print_diagnostics=True):
             acados_solver.cost_set(i, "zl", np.array(s["zl"], dtype=float))
             acados_solver.cost_set(i, "zu", np.array(s["zu"], dtype=float))
 
-    # ---- solve ----
+    # ---- warm start from dump ----
     acados_solver.reset()
+    for i in range(N + 1):
+        s = stages[i]
+        nx_i, nu_i, ns_i = s["nx"], s["nu"], s["ns"]
+        if "ws_x" in s and len(s["ws_x"]) == nx_i:
+            acados_solver.set(i, "x", np.array(s["ws_x"], dtype=float))
+        if "ws_u" in s and len(s["ws_u"]) == nu_i:
+            acados_solver.set(i, "u", np.array(s["ws_u"], dtype=float))
+        if "ws_sl" in s and len(s.get("ws_sl", [])) == ns_i and ns_i > 0:
+            acados_solver.set(i, "sl", np.array(s["ws_sl"], dtype=float))
+        if "ws_su" in s and len(s.get("ws_su", [])) == ns_i and ns_i > 0:
+            acados_solver.set(i, "su", np.array(s["ws_su"], dtype=float))
+        if "ws_lam" in s and len(s["ws_lam"]) > 0:
+            acados_solver.set(i, "lam", np.array(s["ws_lam"], dtype=float))
+        if "ws_pi" in s and len(s.get("ws_pi", [])) > 0 and i < N:
+            acados_solver.set(i, "pi", np.array(s["ws_pi"], dtype=float))
+    logger.info("warm start loaded from dump for %d stages", N + 1)
+
+    # ---- solve ----
     start_time = time.perf_counter()
     acados_solver.solve_for_x0(
         x0, fail_on_nonzero_status=False, print_stats_on_failure=True)
@@ -1579,20 +1625,30 @@ def load_and_solve_from_cpp_dump(json_path, plot=True, print_diagnostics=True):
         lat_lb.insert(0, np.array([x0[IDX_LATERAL_ERROR]]))
         lat_ub.insert(0, np.array([x0[IDX_LATERAL_ERROR]]))
 
-        dfyf_lb = float(stages[0]["lbu"][0]) if stages[0]["nbu"] > 0 else None
-        dfyf_ub = float(stages[0]["ubu"][0]) if stages[0]["nbu"] > 0 else None
-        delta_min = float(stages[0]["lg"][0]) if stages[0]["ng"] > 0 else None
-        delta_max = float(stages[0]["ug"][0]) if stages[0]["ng"] > 0 else None
+        dfyf_lb_list = [float(stages[i]["lbu"][0]) for i in range(N) if stages[i]["nbu"] > 0]
+        dfyf_ub_list = [float(stages[i]["ubu"][0]) for i in range(N) if stages[i]["nbu"] > 0]
+        delta_min_list = [float(stages[i]["lg"][0]) for i in range(N + 1) if stages[i]["ng"] > 0]
+        delta_max_list = [float(stages[i]["ug"][0]) for i in range(N + 1) if stages[i]["ng"] > 0]
+
+        ws_x_init = None
+        ws_u_init = None
+        if "ws_x" in stages[0]:
+            ws_x_init = [np.array(stages[i].get("ws_x", [0.0] * stages[i]["nx"]), dtype=float)
+                         for i in range(N + 1)]
+        if "ws_u" in stages[0]:
+            ws_u_init = [np.array(stages[i].get("ws_u", [0.0] * stages[i]["nu"]), dtype=float)
+                         for i in range(N)]
 
         plot_acados_results(
             x_sol, u_sol, N, tf,
             y_ref=y_ref, y_ref_e=y_ref_e,
             time_steps=time_steps,
             lat_lb_list=lat_lb, lat_ub_list=lat_ub,
-            dfyf_lb=dfyf_lb, dfyf_ub=dfyf_ub,
+            dfyf_lb_list=dfyf_lb_list, dfyf_ub_list=dfyf_ub_list,
             plot_delta_figure=True,
             x0=x0,
-            delta_min=delta_min, delta_max=delta_max,
+            delta_min_list=delta_min_list, delta_max_list=delta_max_list,
+            ws_x=ws_x_init, ws_u=ws_u_init,
         )
 
     return {
@@ -1640,11 +1696,16 @@ def run_deterministic_solve():
 
     phys_params = [default_phys.copy() for _ in range(N)]
 
+    delta_min_list = [DELTA_MIN] * (N + 1)
+    delta_max_list = [DELTA_MAX] * (N + 1)
+    dfyf_lb_list = [DFYF_N_LOWER] * N
+    dfyf_ub_list = [DFYF_N_UPPER] * N
+
     res = run_single_solve(
         True,
         acados_solver, sim_solver, N, time_steps, x0, phys_params,
         y_ref, y_ref_e, lat_lb_list, lat_ub_list,
-        DELTA_MIN, DELTA_MAX, DFYF_N_LOWER, DFYF_N_UPPER,
+        delta_min_list, delta_max_list, dfyf_lb_list, dfyf_ub_list,
     )
 
     print(f"\nstatus = {res['status']}  nlp_iter = {res['nlp_iter']}  "
@@ -1668,12 +1729,12 @@ def run_deterministic_solve():
         time_steps=res["time_steps"],
         lat_lb_list=res["lat_lb_list"],
         lat_ub_list=res["lat_ub_list"],
-        dfyf_lb=res["dfyf_n_lower"],
-        dfyf_ub=res["dfyf_n_upper"],
+        dfyf_lb_list=res["dfyf_lb_list"],
+        dfyf_ub_list=res["dfyf_ub_list"],
         plot_delta_figure=True,
         x0=res["x0"],
-        delta_min=res["delta_min"],
-        delta_max=res["delta_max"],
+        delta_min_list=res["delta_min_list"],
+        delta_max_list=res["delta_max_list"],
     )
     vx_list = [res["phys_params"][min(i, N - 1)][0] for i in range(N + 1)]
     kappa_list = [res["phys_params"][min(i, N - 1)][1] for i in range(N + 1)]
