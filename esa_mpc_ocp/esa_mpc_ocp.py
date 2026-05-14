@@ -823,6 +823,7 @@ def plot_acados_results(
     delta_max_list=None,
     ws_x=None,
     ws_u=None,
+    vx_list=None,
 ):
     """
     Plot the results from Acados solver for the 5-state ESA MPC model.
@@ -843,6 +844,7 @@ def plot_acados_results(
         delta_min_list, delta_max_list: optional list length N+1; δ constraint bounds per stage.
         ws_x: optional array (N+1, 5) — warm-start states (plotted for comparison).
         ws_u: optional array (N, 1)   — warm-start controls (plotted for comparison).
+        vx_list: optional array/list (N+1,) — longitudinal velocity per node for lateral accel plot.
     """
     x = np.array(x)
     u = np.array(u)
@@ -930,6 +932,12 @@ def plot_acados_results(
     plt.tight_layout()
 
     if plot_delta_figure:
+        has_vx = vx_list is not None and len(vx_list) >= N + 1
+        n_rows = 3 if has_vx else 1
+        fig2, axes2 = plt.subplots(n_rows, 1, figsize=(10, 4 * n_rows), sharex=True,
+                                   squeeze=False)
+        ax_d = axes2[0, 0]
+
         lf_over_vx = VEHICLE_LF / VX_NOMINAL
         delta_traj = (
             x[:, IDX_BETA]
@@ -944,7 +952,6 @@ def plot_acados_results(
         )
         d_lo = np.array([float(v) if abs(float(v)) <= 1.0 else np.nan for v in delta_min_list]) if has_delta_bounds else np.full(N + 1, DELTA_MIN)
         d_hi = np.array([float(v) if abs(float(v)) <= 1.0 else np.nan for v in delta_max_list]) if has_delta_bounds else np.full(N + 1, DELTA_MAX)
-        fig2, ax_d = plt.subplots(1, 1, figsize=(10, 4))
         ax_d.fill_between(
             t_x,
             d_lo,
@@ -971,13 +978,53 @@ def plot_acados_results(
                         - (FYF_SCALE / CF_FIT) * x0[IDX_FYF])
             ax_d.plot(0.0, delta_x0, 'r*', markersize=12, zorder=5,
                       label=f'x0 δ={delta_x0:.4f}')
-        ax_d.set_xlabel('Time (s)')
         ax_d.set_ylabel('δ (rad)')
         ax_d.set_title(
             r'$\delta_{\mathrm{lin}}$ = β + (lf/v$_x$)·ẏ − F$_{yf}$/C$_f$  (C$_f$=CF_FIT) vs bounds'
         )
         ax_d.legend(loc='best')
         ax_d.grid(True)
+
+        if has_vx:
+            ax_ay = axes2[1, 0]
+            vx_arr = np.array(vx_list[:N + 1], dtype=float)
+            dt_arr = np.diff(t_x)
+
+            ay_kin = vx_arr * x[:, IDX_YAW_RATE]
+
+            vy = vx_arr * x[:, IDX_BETA]
+            ay_body = np.zeros(N + 1)
+            ay_body[1:-1] = (vy[2:] - vy[:-2]) / (t_x[2:] - t_x[:-2])
+            ay_body[0] = (vy[1] - vy[0]) / dt_arr[0] if dt_arr[0] > 0 else 0.0
+            ay_body[-1] = (vy[-1] - vy[-2]) / dt_arr[-1] if dt_arr[-1] > 0 else 0.0
+            ay_dyn = ay_body + ay_kin
+
+            ax_ay.plot(t_x, ay_kin, 'b-', linewidth=2, label=r'kinematic $a_y = v_x \cdot \dot{\psi}$')
+            ax_ay.plot(t_x, ay_dyn, 'r-', linewidth=2, label=r'dynamic $a_y = \ddot{y} + v_x \dot{\psi}$')
+            if has_ws_x:
+                ay_ws_kin = vx_arr * ws_x[:, IDX_YAW_RATE]
+                vy_ws = vx_arr * ws_x[:, IDX_BETA]
+                ay_ws_body = np.zeros(N + 1)
+                ay_ws_body[1:-1] = (vy_ws[2:] - vy_ws[:-2]) / (t_x[2:] - t_x[:-2])
+                ay_ws_body[0] = (vy_ws[1] - vy_ws[0]) / dt_arr[0] if dt_arr[0] > 0 else 0.0
+                ay_ws_body[-1] = (vy_ws[-1] - vy_ws[-2]) / dt_arr[-1] if dt_arr[-1] > 0 else 0.0
+                ax_ay.plot(t_x, ay_ws_kin, 'b--', linewidth=1.2, alpha=0.5, label='ws kinematic')
+                ax_ay.plot(t_x, ay_ws_body + ay_ws_kin, 'r--', linewidth=1.2, alpha=0.5, label='ws dynamic')
+            ax_ay.set_ylabel(r'$a_y$ (m/s²)')
+            ax_ay.set_title('Lateral Acceleration (kinematic vs dynamic)')
+            ax_ay.legend(loc='best')
+            ax_ay.grid(True)
+
+            ax_vx = axes2[2, 0]
+            ax_vx.plot(t_x, vx_arr, 'b-', linewidth=2, label=r'$v_x$')
+            ax_vx.set_xlabel('Time (s)')
+            ax_vx.set_ylabel(r'$v_x$ (m/s)')
+            ax_vx.set_title('Longitudinal Velocity')
+            ax_vx.legend(loc='best')
+            ax_vx.grid(True)
+        else:
+            axes2[-1, 0].set_xlabel('Time (s)')
+
         plt.tight_layout()
 
 
@@ -1454,6 +1501,7 @@ def run_benchmark(n_calls=1, plot_call_idx=0):
         r = results[plot_call_idx]
         print(f"\nPlotting call #{plot_call_idx}:  status={r['status']}  "
               f"elapsed={r['elapsed_ms']:.3f} ms  nlp_iter={r['nlp_iter']}")
+        vx_list = [r["phys_params"][min(i, N - 1)][0] for i in range(N + 1)]
         plot_acados_results(
             r["x_sol"], r["u_sol"], N, r["tf"],
             y_ref=r["y_ref"], y_ref_e=r["y_ref_e"],
@@ -1466,8 +1514,8 @@ def run_benchmark(n_calls=1, plot_call_idx=0):
             x0=r["x0"],
             delta_min_list=r["delta_min_list"],
             delta_max_list=r["delta_max_list"],
+            vx_list=vx_list,
         )
-        vx_list = [r["phys_params"][min(i, N - 1)][0] for i in range(N + 1)]
         kappa_list = [r["phys_params"][min(i, N - 1)][1] for i in range(N + 1)]
         visualize_in_cartesian(r["x_sol"], N, r["tf"], vx_list, kappa_list,
                                time_steps=r["time_steps"])
@@ -1502,6 +1550,14 @@ def load_and_solve_from_cpp_dump(json_path, plot=True, print_diagnostics=True):
     # stage 0 的 lbx == ubx == x0 (initial state fixing, nbx0 = nx)
     x0 = np.array(stages[0]["lbx"], dtype=float)
     logger.info("x0 from dump: %s", x0)
+    if False
+        steer = 1.3
+        steer_rate = 1.3
+        for s in stages:
+            s["lg"] = [v * steer for v in s["lg"]]
+            s["ug"] = [v * steer for v in s["ug"]]
+            s["lbu"] = [v * steer_rate for v in s["lbu"]]
+            s["ubu"] = [v * steer_rate for v in s["ubu"]]
 
     for i in range(N + 1):
         s = stages[i]
@@ -1639,6 +1695,8 @@ def load_and_solve_from_cpp_dump(json_path, plot=True, print_diagnostics=True):
             ws_u_init = [np.array(stages[i].get("ws_u", [0.0] * stages[i]["nu"]), dtype=float)
                          for i in range(N)]
 
+        vx_from_dump = [float(stages[min(i, N - 1)]["p"][0]) for i in range(N + 1)]
+
         plot_acados_results(
             x_sol, u_sol, N, tf,
             y_ref=y_ref, y_ref_e=y_ref_e,
@@ -1649,6 +1707,7 @@ def load_and_solve_from_cpp_dump(json_path, plot=True, print_diagnostics=True):
             x0=x0,
             delta_min_list=delta_min_list, delta_max_list=delta_max_list,
             ws_x=ws_x_init, ws_u=ws_u_init,
+            vx_list=vx_from_dump,
         )
 
     return {
@@ -1723,6 +1782,7 @@ def run_deterministic_solve():
         print(f"  [{k:2d}] {vals}")
 
     print("\nPlotting deterministic solve (states, control, δ, Cartesian)...")
+    vx_list = [res["phys_params"][min(i, N - 1)][0] for i in range(N + 1)]
     plot_acados_results(
         res["x_sol"], res["u_sol"], N, res["tf"],
         y_ref=res["y_ref"], y_ref_e=res["y_ref_e"],
@@ -1735,8 +1795,8 @@ def run_deterministic_solve():
         x0=res["x0"],
         delta_min_list=res["delta_min_list"],
         delta_max_list=res["delta_max_list"],
+        vx_list=vx_list,
     )
-    vx_list = [res["phys_params"][min(i, N - 1)][0] for i in range(N + 1)]
     kappa_list = [res["phys_params"][min(i, N - 1)][1] for i in range(N + 1)]
     visualize_in_cartesian(
         res["x_sol"], N, res["tf"], vx_list, kappa_list,
