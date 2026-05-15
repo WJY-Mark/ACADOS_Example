@@ -1550,7 +1550,7 @@ def load_and_solve_from_cpp_dump(json_path, plot=True, print_diagnostics=True):
     # stage 0 的 lbx == ubx == x0 (initial state fixing, nbx0 = nx)
     x0 = np.array(stages[0]["lbx"], dtype=float)
     logger.info("x0 from dump: %s", x0)
-    if False
+    if False:
         steer = 1.3
         steer_rate = 1.3
         for s in stages:
