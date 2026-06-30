@@ -598,8 +598,12 @@ def set_acados_model(stage_n, tf, time_steps=None):
         ocp.solver_options.integrator_type = "DISCRETE"
     else:
         ocp.solver_options.integrator_type = "ERK"
-        ocp.solver_options.sim_method_num_stages = 4
+        ocp.solver_options.sim_method_num_stages = 4 # runge-kutta, 4 stages is for 4th order accuracy
         ocp.solver_options.sim_method_num_steps = 14
+
+        # ocp.solver_options.integrator_type = "IRK"
+        # ocp.solver_options.sim_method_num_stages = 2 # gauss-legendre, 2 stages is for 4th order accuracy
+        # ocp.solver_options.sim_method_num_steps = 1
     ocp.solver_options.print_level = 0
     ocp.solver_options.tol = 1e-6
     ocp.solver_options.tf = tf
