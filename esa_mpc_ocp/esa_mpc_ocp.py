@@ -599,7 +599,7 @@ def set_acados_model(stage_n, tf, time_steps=None):
     else:
         ocp.solver_options.integrator_type = "ERK"
         ocp.solver_options.sim_method_num_stages = 4
-        ocp.solver_options.sim_method_num_steps = 1
+        ocp.solver_options.sim_method_num_steps = 14
     ocp.solver_options.print_level = 0
     ocp.solver_options.tol = 1e-6
     ocp.solver_options.tf = tf
@@ -1523,6 +1523,132 @@ def run_benchmark(n_calls=1, plot_call_idx=0):
     return results
 
 
+def _print_dynamics_and_kkt_diagnostics(stages, N, time_steps,
+                                        acados_solver=None):
+    """
+    Print per-stage continuous A matrix and eigenvalues, then overall KKT
+    condition number.  Stages printed: every 10th + last 5.
+
+    If *acados_solver* is provided (call after solve), also prints the A
+    matrix that acados actually used (from get_from_qp_in) for comparison.
+    """
+    nx = NX
+    nu = NU
+
+    print_stages = set(range(0, N, 10))
+    print_stages.update(range(max(0, N - 4), N + 1))
+    print_stages = sorted(print_stages)
+
+    A_disc_list = []
+    Bu_disc_list = []
+    Q_diag = np.array([W_BETA, W_YAW_RATE, W_HEADING_ERROR,
+                        W_LATERAL_ERROR, W_FYF_N])
+
+    logger.info("=" * 72)
+    logger.info("  DYNAMICS & EIGENVALUE DIAGNOSTICS")
+    logger.info("=" * 72)
+
+    for i in range(N):
+        s = stages[i]
+        p = np.array(s["p"], dtype=float)
+        vx, kappa_ref, slope_r = p[0], p[1], p[2]
+        alpha_r_bar, Fyr_bar = p[3], p[4]
+        mass, lf, lr, Iz = p[5], p[6], p[7], p[8]
+        dt = time_steps[i]
+
+        A_con, Bu_con, Bd_con = compute_continuous_matrices(
+            vx, kappa_ref, slope_r, alpha_r_bar, Fyr_bar, mass, lf, lr, Iz)
+        A_d, Bu_d, Bd_d = c2d_zoh(A_con, Bu_con, Bd_con, dt)
+        A_disc_list.append(A_d)
+        Bu_disc_list.append(Bu_d)
+
+        if i in print_stages:
+            eig_con = np.linalg.eigvals(A_con)
+            eig_disc = np.linalg.eigvals(A_d)
+            lam_fast = eig_con[np.argmin(np.real(eig_con))]
+            lam_h = abs(np.real(lam_fast)) * dt
+            z = np.real(lam_fast) * dt
+            rk4_growth = abs(1 + z + z**2/2 + z**3/6 + z**4/24)
+
+            logger.info("-" * 72)
+            logger.info("Stage %2d  |  vx=%.2f m/s  dt=%.4f s  slope_r=%.0f",
+                        i, vx, dt, slope_r)
+            logger.info("  A_con (continuous):")
+            for row in range(nx):
+                logger.info("    [%s]",
+                            "  ".join(f"{A_con[row, c]:12.4e}" for c in range(nx)))
+            logger.info("  eig(A_con)  = [%s]",
+                        ", ".join(f"{e.real:+.4f}{e.imag:+.4f}j" for e in eig_con))
+            logger.info("  A_disc (ZOH exact):")
+            for row in range(nx):
+                logger.info("    [%s]",
+                            "  ".join(f"{A_d[row, c]:12.4e}" for c in range(nx)))
+            logger.info("  eig(A_disc) = [%s]",
+                        ", ".join(f"{e.real:+.6f}{e.imag:+.6f}j" for e in eig_disc))
+
+            # acados QP internal A (from ERK/IRK linearization)
+            if acados_solver is not None:
+                try:
+                    A_qp = acados_solver.get_from_qp_in(i, "A")
+                    eig_qp = np.linalg.eigvals(A_qp)
+                    diff = np.max(np.abs(A_qp - A_d))
+                    logger.info("  A_acados (from QP, ERK/IRK linearization):")
+                    for row in range(nx):
+                        logger.info("    [%s]",
+                                    "  ".join(f"{A_qp[row, c]:12.4e}"
+                                             for c in range(nx)))
+                    logger.info("  eig(A_acados) = [%s]",
+                                ", ".join(f"{e.real:+.6f}{e.imag:+.6f}j"
+                                          for e in eig_qp))
+                    logger.info("  max|A_acados - A_zoh| = %.4e  %s",
+                                diff,
+                                "" if diff < 1e-3 else ">>> LARGE DIFF <<<")
+                except Exception as exc:
+                    logger.warning("  A_acados not available: %s", exc)
+
+            logger.info("  |lambda_fast * dt| = %.3f  (RK4 limit=2.785)  "
+                        "RK4_growth=%.2e  %s",
+                        lam_h, rk4_growth,
+                        "STABLE" if lam_h < 2.785 else ">>> UNSTABLE <<<")
+
+    # ---- KKT condition number ----
+    Q_cost = np.diag(Q_diag)
+    R_cost = np.diag([W_DFYF_N])
+    W_e_flat = np.array(stages[N]["W"], dtype=float)
+    ny_e = stages[N]["ny"]
+    Q_e = W_e_flat.reshape((ny_e, ny_e), order='F')
+
+    logger.info("=" * 72)
+    logger.info("  KKT CONDITION NUMBER (based on ZOH A)")
+    logger.info("=" * 72)
+
+    for sigma in [0.0, 1e-4, 1e-2]:
+        _, cond = build_kkt_matrix(
+            A_disc_list, Bu_disc_list, Q_cost, R_cost, Q_e, N, nx, nu,
+            sigma=sigma)
+        logger.info("  sigma=%.0e  =>  cond(KKT) = %.4e", sigma, cond)
+
+    # KKT with acados QP A matrices (if available)
+    if acados_solver is not None:
+        A_qp_list = []
+        Bu_qp_list = []
+        try:
+            for i in range(N):
+                A_qp_list.append(acados_solver.get_from_qp_in(i, "A"))
+                Bu_qp_list.append(acados_solver.get_from_qp_in(i, "B"))
+            logger.info("  KKT CONDITION NUMBER (based on acados QP A)")
+            for sigma in [0.0, 1e-4, 1e-2]:
+                _, cond_qp = build_kkt_matrix(
+                    A_qp_list, Bu_qp_list, Q_cost, R_cost, Q_e, N, nx, nu,
+                    sigma=sigma)
+                logger.info("  sigma=%.0e  =>  cond(KKT_qp) = %.4e",
+                            sigma, cond_qp)
+        except Exception as exc:
+            logger.warning("  KKT from acados QP A not available: %s", exc)
+
+    logger.info("=" * 72)
+
+
 def load_and_solve_from_cpp_dump(json_path, plot=True, print_diagnostics=True):
     """
     从 C++ DumpNlpToJsonFile 输出的 JSON 中读取 acados NLP 全部输入参数，
@@ -1650,6 +1776,11 @@ def load_and_solve_from_cpp_dump(json_path, plot=True, print_diagnostics=True):
         logger.info("  x[%2d] = %s", k, x_sol[k])
     for k in range(0, N, max(1, N // 4)):
         logger.info("  u[%2d] = %s", k, u_sol[k])
+
+    # ---- print A matrices, eigenvalues, and KKT condition number ----
+    # (after solve so acados QP internal A is populated by linearization)
+    _print_dynamics_and_kkt_diagnostics(stages, N, time_steps,
+                                        acados_solver=acados_solver)
 
     if print_diagnostics:
         qp_res, nlp_res = None, None
