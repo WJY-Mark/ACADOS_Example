@@ -221,12 +221,13 @@ def set_acados_model():
 
     # ---- Solver options ----
     ocp.solver_options.qp_solver = "FULL_CONDENSING_HPIPM"
+    # ocp.solver_options.qp_solver = "PARTIAL_CONDENSING_HPIPM"
     ocp.solver_options.nlp_solver_type = "SQP_RTI"
     ocp.solver_options.nlp_solver_max_iter = 50
     ocp.solver_options.qp_solver_iter_max = 100
     ocp.solver_options.hessian_approx = "GAUSS_NEWTON"
     ocp.solver_options.integrator_type = "ERK"
-        # ocp.solver_options.hpipm_mode = "BALANCE"
+    # ocp.solver_options.hpipm_mode = "BALANCE"
     ocp.solver_options.hpipm_mode = "SPEED_ABS"
     ocp.solver_options.qp_solver_warm_start = 1
     ocp.solver_options.nlp_solver_warm_start_first_qp = True
@@ -390,6 +391,470 @@ def plot_results(acados_solver, x_traj, u_traj, dt_vec):
     plt.tight_layout()
 
 
+def compute_continuous_matrices(tau: float):
+    """
+    Continuous-time linear model:
+        x = [s, v, a, a_cmd], u = [j_cmd]
+        s_dot     = v
+        v_dot     = a
+        a_dot     = (a_cmd - a) / tau
+        a_cmd_dot = j_cmd
+    """
+    nx = 4
+    nu = 1
+    A = np.zeros((nx, nx))
+    B = np.zeros((nx, nu))
+
+    A[0, 1] = 1.0
+    A[1, 2] = 1.0
+    A[2, 2] = -1.0 / tau
+    A[2, 3] = 1.0 / tau
+    B[3, 0] = 1.0
+
+    return A, B
+
+
+def c2d_zoh(A, B, dt: float):
+    """
+    Exact ZOH discretization via matrix exponential:
+        [A_d  B_d] = expm([A B; 0 0] * dt)
+    """
+    nx = A.shape[0]
+    nu = B.shape[1]
+    M = np.zeros((nx + nu, nx + nu))
+    M[:nx, :nx] = A
+    M[:nx, nx:nx + nu] = B
+    Md = scipy.linalg.expm(M * dt)
+    A_d = Md[:nx, :nx]
+    B_d = Md[:nx, nx:nx + nu]
+    return A_d, B_d
+
+
+def build_kkt_matrix(A_list, Bu_list, Q, R, Q_e, N, nx, nu, sigma=0.0):
+    """
+    Build the KKT matrix of the OCP QP (equality constraints only),
+    optionally with a uniform diagonal 'sigma' term as an approximation of
+    IPM barrier diagonal contribution.
+
+    Returns (KKT_matrix, condition_number).
+    """
+    nz = (N + 1) * nx + N * nu
+    nc = N * nx
+    dim = nz + nc
+
+    KKT = np.zeros((dim, dim))
+
+    def x_idx(k):
+        return k * (nx + nu)
+
+    def u_idx(k):
+        return k * (nx + nu) + nx
+
+    for k in range(N):
+        ix = x_idx(k)
+        iu = u_idx(k)
+        KKT[ix:ix + nx, ix:ix + nx] = Q + sigma * np.eye(nx)
+        KKT[iu:iu + nu, iu:iu + nu] = R + sigma * np.eye(nu)
+
+    ix_N = x_idx(N)
+    KKT[ix_N:ix_N + nx, ix_N:ix_N + nx] = Q_e + sigma * np.eye(nx)
+
+    for k in range(N):
+        row = nz + k * nx
+        ix_k = x_idx(k)
+        iu_k = u_idx(k)
+        ix_k1 = x_idx(k + 1)
+
+        KKT[row:row + nx, ix_k:ix_k + nx] = A_list[k]
+        KKT[ix_k:ix_k + nx, row:row + nx] = A_list[k].T
+
+        KKT[row:row + nx, iu_k:iu_k + nu] = Bu_list[k]
+        KKT[iu_k:iu_k + nu, row:row + nx] = Bu_list[k].T
+
+        KKT[row:row + nx, ix_k1:ix_k1 + nx] = -np.eye(nx)
+        KKT[ix_k1:ix_k1 + nx, row:row + nx] = -np.eye(nx)
+
+    svs = np.linalg.svd(KKT, compute_uv=False)
+    cond = svs[0] / svs[svs > 1e-15][-1] if np.any(svs > 1e-15) else np.inf
+    return KKT, cond
+
+
+def print_dynamics_and_kkt_diagnostics(acados_solver, N, time_steps):
+    """
+    Print per-stage continuous/discrete A matrices and eigenvalues, then
+    overall KKT condition number. Prints every 10th stage + last 5 stages.
+
+    Also attempts to print A/B that acados QP used (get_from_qp_in) if available.
+    """
+    nx = 4
+    nu = 1
+
+    print_stages = set(range(0, N, 10))
+    print_stages.update(range(max(0, N - 4), N))
+    print_stages = sorted(print_stages)
+
+    A_disc_list = []
+    Bu_disc_list = []
+
+    logger.info("=" * 72)
+    logger.info("  DYNAMICS & EIGENVALUE DIAGNOSTICS (lon_pwj)")
+    logger.info("=" * 72)
+
+    for i in range(N):
+        dt = float(time_steps[i])
+        tau = TAU_A
+        try:
+            p_i = acados_solver.get(i, "p")
+            if p_i is not None and len(p_i) >= 1:
+                tau = float(np.array(p_i).reshape((-1,))[0])
+        except Exception:
+            pass
+
+        A_con, Bu_con = compute_continuous_matrices(tau)
+        A_d, Bu_d = c2d_zoh(A_con, Bu_con, dt)
+        A_disc_list.append(A_d)
+        Bu_disc_list.append(Bu_d)
+
+        if i in print_stages:
+            eig_con = np.linalg.eigvals(A_con)
+            eig_disc = np.linalg.eigvals(A_d)
+            lam_fast = eig_con[np.argmin(np.real(eig_con))]
+            lam_h = abs(np.real(lam_fast)) * dt
+            z = np.real(lam_fast) * dt
+            rk4_growth = abs(1 + z + z**2 / 2 + z**3 / 6 + z**4 / 24)
+
+            logger.info("-" * 72)
+            logger.info("Stage %2d  |  tau=%.4f s  dt=%.4f s", i, tau, dt)
+            logger.info("  A_con (continuous):")
+            for row in range(nx):
+                logger.info("    [%s]",
+                            "  ".join(f"{A_con[row, c]:12.4e}" for c in range(nx)))
+            logger.info("  eig(A_con)  = [%s]",
+                        ", ".join(f"{e.real:+.6f}{e.imag:+.6f}j" for e in eig_con))
+            logger.info("  A_disc (ZOH exact):")
+            for row in range(nx):
+                logger.info("    [%s]",
+                            "  ".join(f"{A_d[row, c]:12.4e}" for c in range(nx)))
+            logger.info("  eig(A_disc) = [%s]",
+                        ", ".join(f"{e.real:+.6f}{e.imag:+.6f}j" for e in eig_disc))
+
+            try:
+                A_qp = acados_solver.get_from_qp_in(i, "A")
+                B_qp = acados_solver.get_from_qp_in(i, "B")
+                diff_A = float(np.max(np.abs(A_qp - A_d)))
+                diff_B = float(np.max(np.abs(B_qp - Bu_d)))
+                eig_qp = np.linalg.eigvals(A_qp)
+                logger.info("  A_acados (from QP):")
+                for row in range(nx):
+                    logger.info("    [%s]",
+                                "  ".join(f"{A_qp[row, c]:12.4e}" for c in range(nx)))
+                logger.info("  eig(A_acados) = [%s]",
+                            ", ".join(f"{e.real:+.6f}{e.imag:+.6f}j" for e in eig_qp))
+                logger.info("  max|A_acados - A_zoh| = %.4e  %s", diff_A,
+                            "" if diff_A < 1e-6 else ">>> LARGE DIFF <<<")
+                logger.info("  max|B_acados - B_zoh| = %.4e  %s", diff_B,
+                            "" if diff_B < 1e-6 else ">>> LARGE DIFF <<<")
+            except Exception as exc:
+                logger.warning("  A/B from QP not available: %s", exc)
+
+            logger.info("  |lambda_fast * dt| = %.3f  (RK4 limit=2.785)  RK4_growth=%.2e  %s",
+                        lam_h, rk4_growth,
+                        "STABLE" if lam_h < 2.785 else ">>> UNSTABLE <<<")
+
+    Q_cost = np.diag([W_S, W_V, W_A, W_A_CMD])
+    R_cost = np.diag([W_J_CMD])
+    Q_e = np.diag([W_S, W_V, W_A, W_A_CMD]) * 10.0
+
+    logger.info("=" * 72)
+    logger.info("  KKT CONDITION NUMBER (based on ZOH A)")
+    logger.info("=" * 72)
+    for sigma in [0.0, 1e-4, 1e-2]:
+        _, cond = build_kkt_matrix(
+            A_disc_list, Bu_disc_list, Q_cost, R_cost, Q_e, N, nx, nu,
+            sigma=sigma)
+        logger.info("  sigma=%.0e  =>  cond(KKT) = %.4e", sigma, cond)
+
+    try:
+        A_qp_list = []
+        Bu_qp_list = []
+        for i in range(N):
+            A_qp_list.append(acados_solver.get_from_qp_in(i, "A"))
+            Bu_qp_list.append(acados_solver.get_from_qp_in(i, "B"))
+        logger.info("  KKT CONDITION NUMBER (based on acados QP A)")
+        for sigma in [0.0, 1e-4, 1e-2]:
+            _, cond_qp = build_kkt_matrix(
+                A_qp_list, Bu_qp_list, Q_cost, R_cost, Q_e, N, nx, nu,
+                sigma=sigma)
+            logger.info("  sigma=%.0e  =>  cond(KKT_qp) = %.4e", sigma, cond_qp)
+    except Exception as exc:
+        logger.warning("  KKT from acados QP A not available: %s", exc)
+
+    logger.info("=" * 72)
+
+def _safe_get_stats_ms(acados_solver, name: str) -> float:
+    try:
+        v = acados_solver.get_stats(name)
+        if v is None:
+            return float("nan")
+        return float(v) * 1000.0
+    except Exception:
+        return float("nan")
+
+
+def run_single_solve_lon(acados_solver, N, time_steps, x0, tau,
+                         y_ref, y_ref_e,
+                         x_lb_list, x_ub_list, u_lb_list, u_ub_list,
+                         do_diagnostics=False):
+    """
+    One solve call for lon_pwj with per-stage overriding of:
+      - time_steps
+      - x0
+      - tau (parameter)
+      - yref / bounds
+    """
+    # allow changing time grid without re-exporting
+    try:
+        acados_solver.set_new_time_steps(np.array(time_steps, dtype=float))
+    except Exception:
+        pass
+
+    # stage 0 x0
+    acados_solver.constraints_set(0, "lbx", x0)
+    acados_solver.constraints_set(0, "ubx", x0)
+
+    # set per-stage params/refs/bounds
+    for i in range(N + 1):
+        acados_solver.set(i, "p", np.array([tau], dtype=float))
+        if i == 0:
+            acados_solver.cost_set(i, "yref", y_ref[0])
+            if i < N:
+                acados_solver.constraints_set(i, "lbu", u_lb_list[i])
+                acados_solver.constraints_set(i, "ubu", u_ub_list[i])
+        elif i < N:
+            acados_solver.cost_set(i, "yref", y_ref[i])
+            acados_solver.constraints_set(i, "lbx", x_lb_list[i])
+            acados_solver.constraints_set(i, "ubx", x_ub_list[i])
+            acados_solver.constraints_set(i, "lbu", u_lb_list[i])
+            acados_solver.constraints_set(i, "ubu", u_ub_list[i])
+        else:
+            acados_solver.cost_set(i, "yref", y_ref_e)
+            acados_solver.constraints_set(i, "lbx", x_lb_list[i])
+            acados_solver.constraints_set(i, "ubx", x_ub_list[i])
+
+    # warm start: simple x0 propagation
+    acados_solver.reset()
+    for i in range(N + 1):
+        acados_solver.set(i, "x", x0.copy())
+    for i in range(N):
+        acados_solver.set(i, "u", np.zeros((1,)))
+
+    t0 = time.perf_counter()
+    status = acados_solver.solve()
+    elapsed_ms = (time.perf_counter() - t0) * 1000.0
+
+    x_sol = [acados_solver.get(i, "x") for i in range(N + 1)]
+    u_sol = [acados_solver.get(i, "u") for i in range(N)]
+
+    res = {
+        "status": int(status),
+        "elapsed_ms": float(elapsed_ms),
+        "time_tot_ms": _safe_get_stats_ms(acados_solver, "time_tot"),
+        "time_qp_ms": _safe_get_stats_ms(acados_solver, "time_qp"),
+        "time_lin_ms": _safe_get_stats_ms(acados_solver, "time_lin"),
+        "sqp_iter": int(acados_solver.get_stats("sqp_iter")) if hasattr(acados_solver, "get_stats") else -1,
+        "x0": x0.copy(),
+        "tau": float(tau),
+        "time_steps": np.array(time_steps, dtype=float),
+        "x_sol": x_sol,
+        "u_sol": u_sol,
+        "y_ref": y_ref,
+        "y_ref_e": y_ref_e,
+        "x_lb_list": x_lb_list,
+        "x_ub_list": x_ub_list,
+        "u_lb_list": u_lb_list,
+        "u_ub_list": u_ub_list,
+    }
+
+    if do_diagnostics:
+        logger.info("Diagnostics for one call:")
+        print_dynamics_and_kkt_diagnostics(acados_solver, N, np.array(time_steps, dtype=float))
+
+    return res
+
+
+def run_benchmark(n_calls=1, plot_call_idx=17):
+    """
+    Run lon_pwj solver n_calls times with randomized inputs.
+
+    Each call varies:
+      - time_steps: first 20 = 0.02s, one middle step in [0.05, 0.2], rest = 0.2s
+      - x0: small perturbations
+      - yref: target s_ref and v_ref randomized
+      - tau: inertia time constant randomized
+      - bounds: s upper and jerk bounds randomized slightly
+
+    Args:
+        n_calls: number of solve calls
+        plot_call_idx: which call to plot (0-based); set -1 to skip plotting
+    """
+    rng = np.random.default_rng(seed=42)
+    N = N_STEPS
+
+    base_time_steps = build_time_steps()
+    base_tf = float(np.sum(base_time_steps))
+    acados_solver, _ = set_acados_model()
+
+    results = []
+
+    for k in range(n_calls):
+        # --- 1) Randomize time_steps ---
+        dt_mid = float(rng.uniform(0.05, 0.2))
+        ts = np.concatenate([
+            np.full(N_SHORT, DT_SHORT),
+            np.array([dt_mid]),
+            np.full(N_LONG - 1, DT_LONG),
+        ])
+        if len(ts) != N:
+            ts = base_time_steps.copy()
+
+        # --- 2) Randomize x0 ---
+        s0 = float(rng.uniform(-0.5, 0.5))
+        v0 = float(rng.uniform(0.0, 30.0))
+        a0 = float(rng.uniform(-2.0, 2.0))
+        a_cmd0 = float(rng.uniform(-2.0, 2.0))
+        x0 = np.array([s0, v0, a0, a_cmd0], dtype=float)
+
+        # --- 3) Randomize tau ---
+        tau = float(np.clip(TAU_A * (1.0 + rng.uniform(-0.5, 0.5)), 0.02, 0.5))
+
+        # --- 4) Randomize reference ---
+        s_ref = float(rng.uniform(10.0, 60.0))
+        v_ref = float(rng.uniform(0.0, 5.0))
+        a_ref = 0.0
+        a_cmd_ref = 0.0
+        j_ref = 0.0
+        y_ref = [np.array([s_ref, v_ref, a_ref, a_cmd_ref, j_ref], dtype=float) for _ in range(N)]
+        y_ref_e = np.array([s_ref, v_ref, a_ref, a_cmd_ref], dtype=float)
+
+        # --- 5) Randomize constraints (per-step) ---
+        s_upper = float(S_UPPER + rng.uniform(-1.0, 1.0))
+        s_lower = float(S_LOWER)  # treated as -inf in plotting
+        v_lower = float(V_LOWER)
+        v_upper = float(V_UPPER)
+        a_cmd_lower = float(A_CMD_LOWER)
+        a_cmd_upper = float(A_CMD_UPPER)
+        j_lower = float(J_CMD_LOWER * (1.0 + rng.uniform(-0.2, 0.2)))
+        j_upper = float(J_CMD_UPPER * (1.0 + rng.uniform(-0.2, 0.2)))
+
+        x_lb_list = [np.array([s_lower, v_lower, a_cmd_lower], dtype=float) for _ in range(N + 1)]
+        x_ub_list = [np.array([s_upper, v_upper, a_cmd_upper], dtype=float) for _ in range(N + 1)]
+        u_lb_list = [np.array([j_lower], dtype=float) for _ in range(N)]
+        u_ub_list = [np.array([j_upper], dtype=float) for _ in range(N)]
+
+        # --- 6) Solve ---
+        res = run_single_solve_lon(
+            acados_solver, N, ts, x0, tau,
+            y_ref, y_ref_e,
+            x_lb_list, x_ub_list, u_lb_list, u_ub_list,
+            do_diagnostics=(k==plot_call_idx),
+        )
+        results.append(res)
+
+        is_fail = res["status"] != 0
+        verbose = k < 2 or k == n_calls - 1 or is_fail
+        tag = "FAIL" if is_fail else "OK"
+        summary = (f"[{k:4d}] {tag}  status={res['status']}  "
+                   f"sqp_iter={res['sqp_iter']}  "
+                   f"wall={res['elapsed_ms']:.3f}  "
+                   f"tot={res['time_tot_ms']:.3f}  "
+                   f"qp={res['time_qp_ms']:.3f} ms")
+        if verbose:
+            print(summary)
+            print(f"  x0: s={x0[0]:.3f}  v={x0[1]:.3f}  a={x0[2]:.3f}  a_cmd={x0[3]:.3f}")
+            print(f"  tau={tau:.4f}  ref: s_ref={s_ref:.2f}  v_ref={v_ref:.2f}")
+            print(f"  dt_mid={dt_mid:.3f}  s_ub={s_upper:.3f}  "
+                  f"j=[{j_lower:.2f},{j_upper:.2f}]")
+
+    # --- Summary statistics ---
+    elapsed_arr = np.array([r["elapsed_ms"] for r in results], dtype=float)
+    tot_arr = np.array([r["time_tot_ms"] for r in results], dtype=float)
+    qp_arr = np.array([r["time_qp_ms"] for r in results], dtype=float)
+    iter_arr = np.array([r["sqp_iter"] for r in results], dtype=float)
+    status_arr = np.array([r["status"] for r in results], dtype=int)
+
+    n_fail = int(np.sum(status_arr != 0))
+    print("\n" + "=" * 70)
+    print(f"BENCHMARK SUMMARY  ({n_calls} calls)")
+    print("=" * 70)
+    print(f"  Failures:  {n_fail} / {n_calls}  ({100*n_fail/n_calls:.1f}%)")
+    print(f"  elapsed   (Python wall): mean={np.mean(elapsed_arr):.3f}  "
+          f"median={np.median(elapsed_arr):.3f}  "
+          f"p95={np.percentile(elapsed_arr, 95):.3f}  "
+          f"max={np.max(elapsed_arr):.3f} ms")
+    if np.all(np.isfinite(tot_arr)):
+        print(f"  time_tot  (acados C):    mean={np.mean(tot_arr):.3f}  "
+              f"median={np.median(tot_arr):.3f}  "
+              f"p95={np.percentile(tot_arr, 95):.3f}  "
+              f"max={np.max(tot_arr):.3f} ms")
+    if np.all(np.isfinite(qp_arr)):
+        print(f"  time_qp:                 mean={np.mean(qp_arr):.3f}  "
+              f"median={np.median(qp_arr):.3f}  "
+              f"p95={np.percentile(qp_arr, 95):.3f}  "
+              f"max={np.max(qp_arr):.3f} ms")
+    print(f"  sqp_iter:                mean={np.mean(iter_arr):.2f}  "
+          f"median={np.median(iter_arr):.0f}  "
+          f"max={np.max(iter_arr):.0f}")
+    print("=" * 70)
+
+    # --- Timing distribution plot ---
+    fig, axes = plt.subplots(2, 2, figsize=(14, 8))
+    fig.suptitle(f"lon_pwj Benchmark ({n_calls} calls)", fontsize=14)
+
+    axes[0, 0].hist(elapsed_arr, bins=40, edgecolor='black', alpha=0.7)
+    axes[0, 0].axvline(np.median(elapsed_arr), color='r', linestyle='--',
+                       label=f"median={np.median(elapsed_arr):.3f}")
+    axes[0, 0].set_xlabel('elapsed (ms)')
+    axes[0, 0].set_ylabel('count')
+    axes[0, 0].set_title('Python wall time')
+    axes[0, 0].legend()
+
+    if np.any(np.isfinite(tot_arr)):
+        axes[0, 1].hist(tot_arr[np.isfinite(tot_arr)], bins=40,
+                        edgecolor='black', alpha=0.7, color='tab:green')
+        axes[0, 1].axvline(np.nanmedian(tot_arr), color='r', linestyle='--',
+                           label=f"median={np.nanmedian(tot_arr):.3f}")
+        axes[0, 1].set_xlabel('time_tot (ms)')
+        axes[0, 1].set_ylabel('count')
+        axes[0, 1].set_title('Total solve time (acados C)')
+        axes[0, 1].legend()
+
+    axes[1, 0].plot(iter_arr, 'o-', markersize=2, linewidth=0.5)
+    axes[1, 0].set_xlabel('call index')
+    axes[1, 0].set_ylabel('sqp_iter')
+    axes[1, 0].set_title('SQP iterations per call')
+
+    colors = ['tab:blue' if s == 0 else 'tab:red' for s in status_arr]
+    axes[1, 1].bar(range(n_calls), elapsed_arr, color=colors, width=1.0)
+    axes[1, 1].set_xlabel('call index')
+    axes[1, 1].set_ylabel('elapsed (ms)')
+    axes[1, 1].set_title('Per-call wall time (red = failure)')
+
+    plt.tight_layout()
+
+    # --- Plot the selected call ---
+    if 0 <= plot_call_idx < n_calls:
+        r = results[plot_call_idx]
+        print(
+            f"\nPlotting call #{plot_call_idx}:  status={r['status']}  "
+            f"elapsed={r['elapsed_ms']:.3f} ms  sqp_iter={r['sqp_iter']}"
+        )
+        x_traj = r["x_sol"]
+        u_traj = r["u_sol"]
+        plot_results(acados_solver, x_traj, u_traj, r["time_steps"])
+
+    return results
+
+
 def safe_mkdir_recursive(directory, overwrite=False):
     if not os.path.exists(directory):
         try:
@@ -409,6 +874,18 @@ def safe_mkdir_recursive(directory, overwrite=False):
 
 if __name__ == "__main__":
     matplotlib.set_loglevel("warning")
+
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--benchmark", action="store_true",
+                        help="Run randomized benchmark instead of single solve")
+
+    args = parser.parse_args()
+
+    if args.benchmark:
+        run_benchmark(n_calls=100, plot_call_idx=17)
+        plt.show()
+        raise SystemExit(0)
 
     # Build solver
     acados_solver, ocp = set_acados_model()
@@ -474,6 +951,8 @@ if __name__ == "__main__":
     print(f"Final state:   {x_traj[-1]}")
     print(f"Total horizon: {tf:.3f} s")
     print(f"Time steps: first {N_SHORT} x {DT_SHORT}s + last {N_LONG} x {DT_LONG}s")
+
+    print_dynamics_and_kkt_diagnostics(acados_solver, N_STEPS, dt_vec)
 
     # Plot
     plot_results(acados_solver, x_traj, u_traj, dt_vec)
